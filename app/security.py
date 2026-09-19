@@ -36,7 +36,7 @@ def _ufw_status() -> tuple[str, str | None]:
     readable=[]
     policies = []
     for line in defaults.splitlines():
-        match = re.match(r"DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY=(\\w+)", line)
+        match = re.match(r"DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY=(\w+)", line)
         if match: policies.append(f"default {match.group(1).lower()}: {match.group(2).lower()}")
     for line in rules.splitlines():
         match=re.search(r"--dport\s+(\d+)(?:\s+-m multiport)?", line)
