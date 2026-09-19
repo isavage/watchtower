@@ -11,6 +11,7 @@ import time
 
 import psutil
 
+from . import hostnet
 from .config import config
 
 if config.uses_host_proc:
@@ -22,15 +23,32 @@ if config.host_root and not os.path.isdir(_ROOT):
     _ROOT = "/"
 
 
+def _net_totals() -> tuple[int, int] | None:
+    """Host-wide (bytes_recv, bytes_sent).
+
+    psutil only sees the container's own veth, so in Docker we sum the host's
+    /proc/net/dev instead. Falls back to psutil when the mount is absent.
+    """
+    if hostnet.host_mode():
+        dev = hostnet.net_dev()
+        if dev is not None:
+            return (
+                sum(c["rx_bytes"] for c in dev.values()),
+                sum(c["tx_bytes"] for c in dev.values()),
+            )
+    n = psutil.net_io_counters()
+    return (n.bytes_recv, n.bytes_sent) if n else None
+
+
 class Collector:
     """Stateful sampler: keeps previous counters to derive rates."""
 
     def __init__(self) -> None:
         self._prev_ts: float | None = time.time()
         d = psutil.disk_io_counters()
-        n = psutil.net_io_counters()
+        n = _net_totals()
         self._disk = (d.read_bytes, d.write_bytes) if d else (0, 0)
-        self._net = (n.bytes_recv, n.bytes_sent) if n else (0, 0)
+        self._net = n if n else (0, 0)
         psutil.cpu_percent(interval=None)  # prime the non-blocking window
 
     @staticmethod
@@ -60,16 +78,16 @@ class Collector:
             disk_total = disk_used = disk_pct = None
 
         d = psutil.disk_io_counters()
-        n = psutil.net_io_counters()
+        n = _net_totals()
         disk_read = disk_write = net_recv = net_sent = None
         if d:
             disk_read = self._delta(d.read_bytes, self._disk[0], dt)
             disk_write = self._delta(d.write_bytes, self._disk[1], dt)
             self._disk = (d.read_bytes, d.write_bytes)
         if n:
-            net_recv = self._delta(n.bytes_recv, self._net[0], dt)
-            net_sent = self._delta(n.bytes_sent, self._net[1], dt)
-            self._net = (n.bytes_recv, n.bytes_sent)
+            net_recv = self._delta(n[0], self._net[0], dt)
+            net_sent = self._delta(n[1], self._net[1], dt)
+            self._net = n
 
         try:
             proc_count = len(psutil.pids())

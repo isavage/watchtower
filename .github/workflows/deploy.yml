@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main, master, ft/sidebar]
+    branches: [main, master, ft/hostnetwork]
     paths-ignore: ['.gitignore', 'README.md', 'docs/**']
   workflow_dispatch:
     inputs:

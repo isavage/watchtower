@@ -22,7 +22,10 @@ time-range selectors and live-updating charts.
   link speed, IPs, errors/drops) and **Containers** (live per-container
   CPU %/mem %/net/block I/O from the Docker Engine API).
 - **Host metrics** — reads the host's `/proc` & `/sys` (mounted read-only) so
-  you monitor the VPS itself, not the container.
+  you monitor the VPS itself, not the container. Includes host network
+  interfaces: per-NIC rates from `/proc/net/dev`, link state/speed/MTU from
+  `/sys/class/net`, and real host IPs (a container's own network namespace
+  would only ever show its Docker bridge IP).
 - **Charts + time selectors** — 5m / 15m / 1h / 6h / 24h / 7d, with
   server-side downsampling so long ranges stay fast.
 - **Live** — summary values refresh every 3s, charts every 10s, detail pages
@@ -180,6 +183,20 @@ volumes:
   - /proc:/host/proc:ro
   - /sys:/host/sys:ro
 ```
+
+With `WT_HOST_ROOT=/host`, every page reports the **server**, not the
+watchtower container:
+
+- **CPU / Memory / Disk / processes** — via psutil pointed at the host's
+  `/proc` (`PROCFS_PATH`) and the shared PID namespace.
+- **Network** — psutil's interface APIs are namespace-scoped ioctls, so they
+  can't see the host from inside a container. The app parses the host's
+  `/proc/net/dev`, `/sys/class/net/*`, `/proc/net/fib_trie`,
+  `/proc/net/route` and `/proc/net/if_inet6` instead (see `app/hostnet.py`).
+  Link speed shows `—` on virt/VPS NICs that don't report it.
+- **Containers** — deliberately the exception: it queries the Docker Engine
+  API over the mounted socket, so it shows per-container usage (which
+  includes watchtower itself).
 
 If your reverse proxy terminates TLS, forward the original scheme and set
 `WT_COOKIE_SECURE=true` so the session cookie is only sent over HTTPS.

@@ -11,6 +11,7 @@ import time
 
 import psutil
 
+from . import hostnet
 from .collector import _ROOT
 
 _HZ = psutil.cpu_freq()  # touched once so psutil caches the path lookup
@@ -147,15 +148,20 @@ def _memory() -> dict:
 def _partitions() -> list[dict]:
     out = []
     for p in psutil.disk_partitions(all=False):
-        # Inside the container the host fs is remapped under /host.
+        # Mounts come from the host's /proc/mounts (PROCFS_PATH), but paths
+        # resolve in the container: "/" there is the overlay fs, not the
+        # host's root disk. Stat the /host-remapped path first when present.
         mount = p.mountpoint
-        try:
-            du = psutil.disk_usage(mount)
-        except (PermissionError, OSError):
+        candidates = [mount] if _ROOT == "/" else [_ROOT + mount, mount]
+        du = None
+        for cand in candidates:
             try:
-                du = psutil.disk_usage(_ROOT + mount)
-            except OSError:
+                du = psutil.disk_usage(cand)
+                break
+            except (PermissionError, OSError):
                 continue
+        if du is None:
+            continue
         out.append(
             {
                 "device": p.device,
@@ -208,40 +214,68 @@ def _disks() -> dict:
 
 
 def _nics() -> dict:
-    stats = psutil.net_if_stats()
-    io = psutil.net_io_counters(pernic=True)
+    # In Docker, psutil only sees the container's own veth (its network
+    # namespace). Read the host's counters from /proc/net/dev and link facts
+    # from /sys/class/net instead; fall back to psutil in local dev.
+    dev = hostnet.net_dev() if hostnet.host_mode() else None
     now = time.time()
     prev = _nics.__dict__.get("_prev") or {}
     prev_ts = _nics.__dict__.get("_ts") or now
     dt = max(now - prev_ts, 1e-6)
-    _nics.__dict__["_prev"] = {k: (v.bytes_sent, v.bytes_recv) for k, v in io.items()}
-    _nics.__dict__["_ts"] = now
 
     out = []
-    for name, c in sorted(io.items()):
-        if name == "lo":
-            continue
-        s = stats.get(name)
-        p = prev.get(name)
-        row = {
-            "name": name,
-            "up": bool(s.isup) if s else None,
-            "speed_mbps": float(s.speed) if s and s.speed else None,
-            "mtu": int(s.mtu) if s else None,
-            "recv_total": float(c.bytes_recv),
-            "sent_total": float(c.bytes_sent),
-            "packets_err": int(c.errin + c.errout),
-            "packets_drop": int(c.dropin + c.dropout),
-        }
-        if p:
-            row["recv_rate"] = max((c.bytes_recv - p[1]) / dt, 0.0)
-            row["sent_rate"] = max((c.bytes_sent - p[0]) / dt, 0.0)
-        out.append(row)
+    if dev is not None:
+        _nics.__dict__["_prev"] = {k: (v["tx_bytes"], v["rx_bytes"]) for k, v in dev.items()}
+        for name, c in sorted(dev.items()):
+            if name == "lo":
+                continue
+            link = hostnet.link_info(name)
+            p = prev.get(name)
+            row = {
+                "name": name,
+                "up": link["up"],
+                "speed_mbps": link["speed_mbps"],
+                "mtu": link["mtu"],
+                "recv_total": float(c["rx_bytes"]),
+                "sent_total": float(c["tx_bytes"]),
+                "packets_err": int(c["rx_errs"] + c["tx_errs"]),
+                "packets_drop": int(c["rx_drop"] + c["tx_drop"]),
+            }
+            if p:
+                row["recv_rate"] = max((c["rx_bytes"] - p[1]) / dt, 0.0)
+                row["sent_rate"] = max((c["tx_bytes"] - p[0]) / dt, 0.0)
+            out.append(row)
+    else:
+        stats = psutil.net_if_stats()
+        io = psutil.net_io_counters(pernic=True)
+        _nics.__dict__["_prev"] = {k: (v.bytes_sent, v.bytes_recv) for k, v in io.items()}
+        for name, c in sorted(io.items()):
+            if name == "lo":
+                continue
+            s = stats.get(name)
+            p = prev.get(name)
+            row = {
+                "name": name,
+                "up": bool(s.isup) if s else None,
+                "speed_mbps": float(s.speed) if s and s.speed else None,
+                "mtu": int(s.mtu) if s else None,
+                "recv_total": float(c.bytes_recv),
+                "sent_total": float(c.bytes_sent),
+                "packets_err": int(c.errin + c.errout),
+                "packets_drop": int(c.dropin + c.dropout),
+            }
+            if p:
+                row["recv_rate"] = max((c.bytes_recv - p[1]) / dt, 0.0)
+                row["sent_rate"] = max((c.bytes_sent - p[0]) / dt, 0.0)
+            out.append(row)
+    _nics.__dict__["_ts"] = now
     out.sort(key=lambda r: -(r.get("recv_rate") or 0.0))
     return {"interfaces": out}
 
 
 def _addresses() -> list[dict]:
+    if hostnet.host_mode():
+        return hostnet.local_addresses()
     out = []
     for name, addrs in psutil.net_if_addrs().items():
         if name == "lo":
@@ -260,7 +294,7 @@ def details(limit: int = 15) -> dict:
     return {
         "ts": time.time(),
         "host": {
-            "hostname": platform.node(),
+            "hostname": hostnet.hostname() or platform.node(),
             "os": f"{platform.system()} {platform.release()}",
             "arch": platform.machine(),
             "boot_time": boot,
