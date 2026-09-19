@@ -4,6 +4,15 @@ import { fmtBytes, fmtDuration, fmtNum, fmtUptime } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { LoadingBlock, StatTile, TableCard, Td, Th, UsageBar } from "../components/ui";
 
+function PortBadges({ ports }: { ports: { PublicPort?: number; PrivatePort: number; Type: string }[] }) {
+  if (!ports.length) return <span className="text-ink-400">—</span>;
+  return <div className="flex max-w-[220px] flex-wrap gap-1">{ports.map((port, index) => {
+    const host = port.PublicPort != null;
+    return <span key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`} title={host ? "Published host port" : "Container-only exposed port"} className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"}`}>
+      {host ? `${port.PublicPort}:` : "exposed "}{port.PrivatePort}/{port.Type}
+    </span>;
+  })}</div>;
+}
 export function DockerPage() {
   const { data, error } = useDocker();
   const { latest } = useSummary();
@@ -64,6 +73,7 @@ export function DockerPage() {
           </div>
 
           <TableCard title="Containers" subtitle={`sorted by CPU · ${rows.length} shown`}>
+            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span></div>
             <table className="w-full">
               <thead>
                 <tr>
@@ -85,7 +95,7 @@ export function DockerPage() {
                       <div className="font-medium text-ink-900">{c.name}</div>
                       <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
                     </Td>
-                    <Td className="hidden text-ink-500 sm:table-cell">{(c.ports ?? []).map((p: any) => `${p.PublicPort ? `${p.PublicPort}:` : ""}${p.PrivatePort}/${p.Type}`).join(", ") || "—"}</Td>
+                    <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
                     <Td className="hidden max-w-[180px] truncate text-ink-500 md:table-cell">{c.image}</Td>
                     <Td>
                       <span
