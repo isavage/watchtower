@@ -11,6 +11,8 @@ time-range selectors and live-updating charts.
 
 ![Dashboard](docs/screenshots/dash.png)
 
+![Docker page](docs/screenshots/docker.png)
+
 ![Memory page](docs/screenshots/mem.png)
 
 ## Features
