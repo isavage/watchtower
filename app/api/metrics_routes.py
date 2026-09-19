@@ -4,7 +4,7 @@ import time
 
 from fastapi import APIRouter, Depends, Query
 
-from .. import auth, details, docker as docker_mod, store
+from .. import auth, details, docker as docker_mod, security, store
 
 router = APIRouter(prefix="/api", tags=["metrics"], dependencies=[Depends(auth.current_user)])
 
@@ -50,6 +50,12 @@ def details_endpoint(
 ) -> dict:
     """Live per-core / per-process / per-disk / per-NIC detail."""
     return details.details(limit=limit)
+
+
+@router.get("/security")
+def security_endpoint() -> dict:
+    """Read-only firewall, SSH, and listener facts from the host."""
+    return security.snapshot()
 
 
 @router.get("/docker")
