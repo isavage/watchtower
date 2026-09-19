@@ -2,6 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
+import { CpuPage } from "./pages/CpuPage";
+import { MemoryPage } from "./pages/MemoryPage";
+import { DiskPage } from "./pages/DiskPage";
+import { NetworkPage } from "./pages/NetworkPage";
+import { DockerPage } from "./pages/DockerPage";
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -34,6 +39,46 @@ export default function App() {
             element={
               <Gate>
                 <Dashboard />
+              </Gate>
+            }
+          />
+          <Route
+            path="/cpu"
+            element={
+              <Gate>
+                <CpuPage />
+              </Gate>
+            }
+          />
+          <Route
+            path="/memory"
+            element={
+              <Gate>
+                <MemoryPage />
+              </Gate>
+            }
+          />
+          <Route
+            path="/disk"
+            element={
+              <Gate>
+                <DiskPage />
+              </Gate>
+            }
+          />
+          <Route
+            path="/network"
+            element={
+              <Gate>
+                <NetworkPage />
+              </Gate>
+            }
+          />
+          <Route
+            path="/docker"
+            element={
+              <Gate>
+                <DockerPage />
               </Gate>
             }
           />

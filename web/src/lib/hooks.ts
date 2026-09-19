@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, MetricPoint, RangeKey, UnauthorizedError } from "../lib/api";
+import { api, Details, DockerInfo, MetricPoint, RangeKey, UnauthorizedError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 /** Poll the live summary on an interval. */
@@ -56,4 +56,66 @@ export function useSeries(range: RangeKey) {
   }, [reload]);
 
   return { points, loading };
+}
+
+/** Poll the live system-details endpoint on an interval. */
+export function useDetails(intervalMs = 2000) {
+  const { clear } = useAuth();
+  const [data, setData] = useState<Details | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await api.details();
+        if (alive) {
+          setData(r);
+          setError(null);
+        }
+      } catch (e) {
+        if (e instanceof UnauthorizedError) clear();
+        else if (alive) setError(e instanceof Error ? e.message : "Failed to load");
+      }
+    };
+    tick();
+    const id = setInterval(tick, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [intervalMs, clear]);
+
+  return { data, error };
+}
+
+/** Poll the Docker containers endpoint on an interval. */
+export function useDocker(intervalMs = 3000) {
+  const { clear } = useAuth();
+  const [data, setData] = useState<DockerInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await api.docker();
+        if (alive) {
+          setData(r);
+          setError(null);
+        }
+      } catch (e) {
+        if (e instanceof UnauthorizedError) clear();
+        else if (alive) setError(e instanceof Error ? e.message : "Failed to load");
+      }
+    };
+    tick();
+    const id = setInterval(tick, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [intervalMs, clear]);
+
+  return { data, error };
 }

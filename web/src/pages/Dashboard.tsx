@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { RangeKey } from "../lib/api";
-import { useAuth } from "../lib/auth";
 import { useSeries, useSummary } from "../lib/hooks";
 import {
   fmtBytes,
@@ -9,13 +8,12 @@ import {
   fmtRate,
   fmtUptime,
 } from "../lib/format";
-import { TimeRangeSelector } from "../components/TimeRangeSelector";
+import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
 import { MetricChart } from "../components/MetricChart";
 import { StatRow } from "../components/StatRow";
 
 export function Dashboard() {
-  const { user, logout } = useAuth();
   const [range, setRange] = useState<RangeKey>("1h");
   const { latest } = useSummary();
   const { points, loading } = useSeries(range);
@@ -23,38 +21,16 @@ export function Dashboard() {
   const cores = latest?.cpu_count ?? undefined;
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-ink-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-900 text-white">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12h4l2 6 4-14 2 8h6" />
-              </svg>
-            </div>
-            <span className="text-[15px] font-semibold tracking-tight text-ink-900">Watchtower</span>
-          </div>
-
-          <div className="ml-auto flex items-center gap-3">
-            <TimeRangeSelector value={range} onChange={setRange} />
-            <div className="flex items-center gap-2 border-l border-ink-200 pl-3">
-              <span className="hidden text-sm text-ink-500 sm:inline">{user}</span>
-              <button
-                onClick={() => logout()}
-                className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-900"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        {loading && points.length === 0 ? (
-          <Empty />
-        ) : (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <Layout
+      title="Dashboard"
+      subtitle={latest ? `${fmtUptime(latest.uptime)} uptime · ${latest.proc_count ?? "—"} processes` : "overview"}
+      range={range}
+      onRange={setRange}
+    >
+      {loading && points.length === 0 ? (
+        <Empty />
+      ) : (
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             {/* CPU */}
             <MetricCard
               title="CPU"
@@ -161,9 +137,8 @@ export function Dashboard() {
               </div>
             </div>
           </div>
-        )}
-      </main>
-    </div>
+      )}
+    </Layout>
   );
 }
 

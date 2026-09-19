@@ -4,7 +4,7 @@ import time
 
 from fastapi import APIRouter, Depends, Query
 
-from .. import auth, store
+from .. import auth, details, docker as docker_mod, store
 
 router = APIRouter(prefix="/api", tags=["metrics"], dependencies=[Depends(auth.current_user)])
 
@@ -42,3 +42,17 @@ def series(
     start = since if since is not None else end - seconds
     data = store.query_series(start, end, points)
     return {"range": range, "start": start, "end": end, "points": data}
+
+
+@router.get("/details")
+def details_endpoint(
+    limit: int = Query(15, ge=5, le=50, description="Top-N processes per sort"),
+) -> dict:
+    """Live per-core / per-process / per-disk / per-NIC detail."""
+    return details.details(limit=limit)
+
+
+@router.get("/docker")
+def docker_endpoint() -> dict:
+    """Running containers with live CPU/mem/net/blkio, or available=False."""
+    return docker_mod.containers()

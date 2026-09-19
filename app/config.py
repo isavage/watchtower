@@ -20,6 +20,7 @@ class Config:
     sample_interval: float = field(default_factory=lambda: float(_env("WT_SAMPLE_INTERVAL", "2")))
     session_days: int = field(default_factory=lambda: int(_env("WT_SESSION_DAYS", "7")))
     cookie_secure: bool = field(default_factory=lambda: _env("WT_COOKIE_SECURE", "auto").lower() in ("1", "true", "yes"))
+    docker_socket: str = field(default_factory=lambda: _env("WT_DOCKER_SOCKET", "/var/run/docker.sock"))
 
     def __post_init__(self) -> None:
         # A missing secret means we are not behind a deliberate config; generate

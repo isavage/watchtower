@@ -1,0 +1,163 @@
+"""Docker container listing + live CPU/mem/net/blkio via the Engine API.
+
+Uses a plain HTTP-over-unix-socket client so no extra dependency is required.
+If the socket is not mounted the endpoint degrades gracefully to
+``{"available": False}``.
+"""
+from __future__ import annotations
+
+import http.client
+import json
+import logging
+import socket
+from datetime import datetime, timezone
+
+import psutil
+
+from .config import config
+
+log = logging.getLogger("watchtower.docker")
+
+
+class _UnixConn(http.client.HTTPConnection):
+    def __init__(self, path: str, timeout: float = 5.0) -> None:
+        super().__init__("localhost", timeout=timeout)
+        self._path = path
+
+    def connect(self) -> None:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(self.timeout)
+        s.connect(self._path)
+        self.sock = s
+
+
+def _get(path: str, timeout: float = 5.0) -> object | None:
+    try:
+        conn = _UnixConn(config.docker_socket, timeout=timeout)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        if resp.status >= 400:
+            log.warning("docker API %s -> %s", path, resp.status)
+            return None
+        return json.loads(body)
+    except (FileNotFoundError, PermissionError, ConnectionError, socket.timeout, OSError):
+        return None
+    except json.JSONDecodeError:
+        return None
+
+
+def _socket_present() -> bool:
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        try:
+            return s.connect_ex(config.docker_socket) == 0
+        finally:
+            s.close()
+    except OSError:
+        return False
+
+
+def _cpu_percent(stats: dict) -> float:
+    cur = stats.get("cpu_stats") or {}
+    prev = stats.get("precpu_stats") or {}
+    delta_sys = cur.get("system_cpu_usage", 0) - prev.get("system_cpu_usage", 0)
+    delta_total = (cur.get("cpu_usage") or {}).get("total_usage", 0) - (
+        (prev.get("cpu_usage") or {}).get("total_usage", 0)
+    )
+    if delta_sys <= 0 or delta_total <= 0:
+        return 0.0
+    cores = cur.get("online_cpus") or 1  # cgroup v2; v1 falls back to 1
+    return min(delta_total / delta_sys * cores * 100.0, 100.0 * cores)
+
+
+def _mem_stats(stats: dict) -> tuple[float | None, float | None, float | None]:
+    mem = stats.get("memory_stats") or {}
+    usage = mem.get("usage")
+    limit = mem.get("limit")
+    cached = (mem.get("stats") or {}).get("inactive_file") or 0
+    if usage is not None:
+        usage = max(usage - cached, 0)
+    if usage is not None and limit:
+        return float(usage), float(limit), min(usage / limit * 100.0, 100.0)
+    return (float(usage) if usage is not None else None), (float(limit) if limit else None), None
+
+
+def _net_bytes(stats: dict) -> tuple[float, float]:
+    rx = tx = 0
+    for iface in (stats.get("networks") or {}).values():
+        rx += iface.get("rx_bytes", 0)
+        tx += iface.get("tx_bytes", 0)
+    return float(rx), float(tx)
+
+
+def _blkio_bytes(stats: dict) -> float:
+    total = 0
+    for dev in (stats.get("blkio_stats") or {}).get("io_service_bytes_recursive") or []:
+        total += dev.get("value", 0)
+    return float(total)
+
+
+def _age_seconds(created_iso: str | None) -> float | None:
+    if not created_iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(created_iso.replace("Z", "+00:00"))
+        return max((datetime.now(timezone.utc) - dt).total_seconds(), 0.0)
+    except ValueError:
+        return None
+
+
+def containers() -> dict:
+    if not _socket_present():
+        return {"available": False, "containers": []}
+
+    items = _get("/containers/json?all=false")
+    if items is None:
+        return {"available": False, "containers": []}
+
+    mem_total = psutil.virtual_memory().total
+    out = []
+    for it in items:
+        cid = it.get("Id", "")
+        row: dict = {
+            "id": cid[:12],
+            "name": (it.get("Names") or [cid[:12]])[0].lstrip("/"),
+            "image": it.get("Image", "?"),
+            "state": it.get("State", "unknown"),
+            "status": it.get("Status", ""),
+            "age": _age_seconds(it.get("Created")),
+            "cpu_pct": None,
+            "mem_usage": None,
+            "mem_limit": None,
+            "mem_pct": None,
+            "net_rx": None,
+            "net_tx": None,
+            "blkio": None,
+            "pids": None,
+        }
+        stats = _get(f"/containers/{cid}/stats?stream=false", timeout=8.0)
+        if isinstance(stats, dict):
+            row["cpu_pct"] = round(_cpu_percent(stats), 2)
+            usage, limit, pct = _mem_stats(stats)
+            row["mem_usage"] = usage
+            row["mem_limit"] = limit or mem_total
+            row["mem_pct"] = round(pct, 2) if pct is not None else None
+            rx, tx = _net_bytes(stats)
+            row["net_rx"] = rx
+            row["net_tx"] = tx
+            row["blkio"] = _blkio_bytes(stats)
+            pid_entry = (stats.get("pstats") or {}).get("pid_stats") or {}
+            if pid_entry:
+                row["pids"] = next(iter(pid_entry.values()), {}).get("current_pids")
+        out.append(row)
+
+    out.sort(key=lambda r: (r.get("cpu_pct") or 0), reverse=True)
+    return {
+        "available": True,
+        "count": len(out),
+        "cpu_total": round(sum(r.get("cpu_pct") or 0 for r in out), 2),
+        "memory": {"total": sum(r.get("mem_usage") or 0 for r in out)},
+        "containers": out,
+    }
