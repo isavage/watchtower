@@ -57,7 +57,9 @@ def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
                     st=f[3]
                     if proto.startswith("tcp") and st!="0A": continue
                     local=f[1]
+                    if ":" not in local: continue
                     addr,port=local.rsplit(":",1)
+                    if not port: continue
                     port=int(port,16)
                     if proto.startswith("tcp"):
                         if addr=="00000000": addr="0.0.0.0"
