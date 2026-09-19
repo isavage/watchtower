@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import type { RangeKey } from "../lib/api";
 import { TimeRangeSelector } from "./TimeRangeSelector";
+
+const DOCKER_NAV = [
+  { to: "/docker/containers", label: "Containers" },
+  { to: "/docker/images", label: "Images" },
+  { to: "/docker/networks", label: "Networks" },
+];
 
 const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
   {
@@ -105,6 +111,8 @@ export function Layout({
   children: ReactNode;
 }) {
   const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  const inDocker = pathname.startsWith("/docker/");
 
   return (
     <div className="flex min-h-screen">
@@ -137,6 +145,15 @@ export function Layout({
               {item.label}
             </NavLink>
           ))}
+          {inDocker && (
+            <div className="ml-2 border-l border-ink-200 pl-3 pt-1 space-y-0.5">
+              {DOCKER_NAV.map((item) => (
+                <NavLink key={item.to} to={item.to} className={({ isActive }) => `block rounded-lg px-3 py-1.5 text-xs font-medium ${isActive ? "bg-ink-100 text-ink-900" : "text-ink-400 hover:bg-ink-50 hover:text-ink-700"}`}>
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-ink-200/70 px-5 py-4">
@@ -183,6 +200,11 @@ export function Layout({
             </NavLink>
           ))}
         </div>
+        {inDocker && (
+          <div className="fixed inset-x-0 top-[53px] z-20 flex gap-1 overflow-x-auto border-b border-ink-200/70 bg-white/95 px-4 py-2 backdrop-blur md:hidden">
+            {DOCKER_NAV.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium ${isActive ? "bg-ink-900 text-white" : "text-ink-500 hover:bg-ink-100"}`}>{item.label}</NavLink>)}
+          </div>
+        )}
       </div>
 
       {/* Main column */}
