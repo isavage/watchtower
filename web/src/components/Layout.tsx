@@ -76,6 +76,16 @@ const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
       </svg>
     ),
   },
+  {
+    to: "/security",
+    label: "Security",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    ),
+  },
 ];
 
 export function Layout({
