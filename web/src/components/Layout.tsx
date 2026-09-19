@@ -177,7 +177,7 @@ export function Layout({
       </aside>
 
       {/* Mobile top bar (collapsed nav) */}
-      <div className="fixed inset-x-0 top-0 z-20 flex items-center gap-2 border-b border-ink-200/70 bg-white/90 px-4 py-3 backdrop-blur md:hidden">
+      <div className="fixed inset-x-0 top-0 z-20 flex items-center gap-2 border-b border-ink-200/70 bg-white/90 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-top))] pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur md:hidden">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink-900 text-white">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12h4l2 6 4-14 2 8h6" />
@@ -185,7 +185,9 @@ export function Layout({
         </div>
         <span className="text-sm font-semibold text-ink-900">Watchtower</span>
         <div className="ml-auto flex gap-1 overflow-x-auto">
-          {NAV.map((item) => (
+          {NAV.map((item) => item.to === "/docker" ? (
+            <button key={item.to} type="button" onClick={() => setDockerOpen((open) => !open)} className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium ${dockerOpen ? "bg-ink-900 text-white" : "text-ink-500 hover:bg-ink-100"}`}>{item.label} <span className={`inline-block transition-transform ${dockerOpen ? "rotate-90" : ""}`}>›</span></button>
+          ) : (
             <NavLink
               key={item.to}
               to={item.to}
@@ -200,7 +202,7 @@ export function Layout({
             </NavLink>
           ))}
         </div>
-        {inDocker && (
+        {dockerOpen && (
           <div className="fixed inset-x-0 top-[53px] z-20 flex gap-1 overflow-x-auto border-b border-ink-200/70 bg-white/95 px-4 py-2 backdrop-blur md:hidden">
             {DOCKER_NAV.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium ${isActive ? "bg-ink-900 text-white" : "text-ink-500 hover:bg-ink-100"}`}>{item.label}</NavLink>)}
           </div>
