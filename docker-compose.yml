@@ -9,6 +9,11 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      # Disk page: the host root partition is measured without any extra mount
+      # (our overlay fs lives on it), and the partition list comes from
+      # /host/proc/1/mounts. To measure an ADDITIONAL data disk, expose just
+      # that one path — never mount the whole host root:
+      # - /data:/host/mnt/data:ro
       - /etc/ufw/ufw.conf:/host/etc/ufw/ufw.conf:ro
       - /etc/default/ufw:/host/etc/default/ufw:ro
       - /etc/ufw/user.rules:/host/etc/ufw/user.rules:ro

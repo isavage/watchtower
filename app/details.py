@@ -6,13 +6,13 @@ container.
 """
 from __future__ import annotations
 
+import os
 import platform
 import time
 
 import psutil
 
 from . import hostnet
-from .collector import _ROOT
 
 _HZ = psutil.cpu_freq()  # touched once so psutil caches the path lookup
 
@@ -145,22 +145,53 @@ def _memory() -> dict:
     }
 
 
+# Opt-in convention for measuring extra host disks: mount just that one
+# host path at /host/mnt/<path> (never the whole host root — security).
+_MNT_ROOT = "/host/mnt"
+
+
 def _partitions() -> list[dict]:
+    # psutil.disk_partitions() reads /proc/mounts, which resolves in the
+    # reader's (container's) namespace — it would list our bind mounts, not
+    # the host's disks. Use the host mount table instead. statvfs needs a
+    # visible path: the container's own "/" lives on the host's root fs (so
+    # it reports the host root disk honestly), and extra data disks are
+    # measured only through /host/mnt/... opt-in mounts.
+    host = hostnet.host_mounts()
+    if host is not None:
+        out = []
+        seen: set[str] = set()
+        # Shortest mountpoint per device wins (canonical, not a bind copy).
+        for dev, mnt, fstype in sorted(host, key=lambda r: len(r[1])):
+            if not dev.startswith("/dev/") or dev in seen:
+                continue
+            path = "/" if mnt == "/" else _MNT_ROOT + mnt
+            if not os.path.isdir(path):
+                continue
+            seen.add(dev)
+            try:
+                du = psutil.disk_usage(path)
+            except OSError:
+                continue
+            out.append(
+                {
+                    "device": dev,
+                    "mountpoint": mnt,
+                    "fstype": fstype,
+                    "total": float(du.total),
+                    "used": float(du.used),
+                    "free": float(du.free),
+                    "pct": du.percent,
+                }
+            )
+        if out:
+            return out
     out = []
     for p in psutil.disk_partitions(all=False):
-        # Mounts come from the host's /proc/mounts (PROCFS_PATH), but paths
-        # resolve in the container: "/" there is the overlay fs, not the
-        # host's root disk. Stat the /host-remapped path first when present.
         mount = p.mountpoint
-        candidates = [mount] if _ROOT == "/" else [_ROOT + mount, mount]
-        du = None
-        for cand in candidates:
-            try:
-                du = psutil.disk_usage(cand)
-                break
-            except (PermissionError, OSError):
-                continue
-        if du is None:
+        try:
+            du = psutil.disk_usage(mount)
+        except (PermissionError, OSError):
             continue
         out.append(
             {

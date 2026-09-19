@@ -197,6 +197,10 @@ volumes:
   - /etc/ufw/... , /etc/default/ufw, /etc/nftables.conf, /etc/ssh, /var/log/auth.log
 ```
 
+> The whole host root is deliberately **not** mounted. A `/:/host/root:ro`
+> bind-mount would expose every host file (`/root`, `/etc/shadow`, other
+> containers' data) to the app, which is not worth a disk-usage number.
+
 With `WT_HOST_ROOT=/host`, every page reports the **server**, not the
 watchtower container:
 
@@ -207,6 +211,13 @@ watchtower container:
   `/proc/net/dev`, `/sys/class/net/*`, `/proc/net/fib_trie`,
   `/proc/net/route` and `/proc/net/if_inet6` instead (see `app/hostnet.py`).
   Link speed shows `—` on virt/VPS NICs that don't report it.
+- **Disk / partitions** — `psutil.disk_partitions()` would list the
+  container's own mounts (bind files, overlay), so the host's real mounts come
+  from `/proc/1/mounts` (same namespace GOTCHA as networking), deduped per
+  device. Usage needs no extra mount: the container's filesystem lives on the
+  host's root partition, so `statvfs("/")` reports the host root disk. A
+  separate data disk is measured only if you opt in by mounting that one path,
+  e.g. `- /data:/host/mnt/data:ro`.
 - **Security** — firewall state is read from the mounted host config files;
   listening sockets come from `/proc/1/net/*` because `/proc/net` resolves in
   the *reader's* namespace (the container's own, if read directly). sshd
