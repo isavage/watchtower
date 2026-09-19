@@ -13,14 +13,11 @@ services:
       - /etc/default/ufw:/host/etc/default/ufw:ro
       - /etc/ufw/user.rules:/host/etc/ufw/user.rules:ro
       - /etc/nftables.conf:/host/etc/nftables.conf:ro
-      # Mount the whole dir: sshd_config is mostly `Include sshd_config.d/*.conf`,
-      # so the file-only mount hid the real port/auth settings.
+      # Whole dir: sshd_config includes sshd_config.d/*.conf
       - /etc/ssh:/host/etc/ssh:ro
       - /var/log/auth.log:/host/var/log/auth.log:ro
       - /var/log/secure:/host/var/log/secure:ro
       - watchtower-data:/data
-      # Docker page talks to the socket through docker-socket-proxy below,
-      # so the raw Engine socket is NOT mounted into this container.
     depends_on:
       - docker-socket-proxy
     # No host port binding: the app is reached only through the reverse proxy
@@ -41,27 +38,21 @@ services:
       WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
       WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
       WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
-      # Read-only Docker API through the socket proxy (see below). To go back
-      # to the raw socket, mount it again and set this to /var/run/docker.sock.
       WT_DOCKER_SOCKET: tcp://docker-socket-proxy:2375
     # Host /proc reads use the existing pid namespace; no ptrace capability is needed.
 
-  # Minimal read-only gateway to the Docker Engine socket (Tecnativa's
-  # docker-socket-proxy). Only the endpoints the Docker/Images/Networks pages
-  # actually call are enabled; everything destructive (exec, create, push,
-  # build, swarm, volumes...) stays denied. The proxy is the only container
-  # that can see the socket, and it is not reachable from any network the
-  # reverse proxy sits on.
+  # Read-only gateway to the Docker Engine socket; only the endpoints the app
+  # actually calls are enabled, everything destructive stays denied.
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
     container_name: watchtower-docker-socket-proxy
     restart: unless-stopped
     environment:
-      CONTAINERS: 1   # GET /containers/json
-      STATS: 1        # GET /containers/{id}/stats
-      IMAGES: 1       # GET /images/json
-      NETWORKS: 1     # GET /networks
-      # Explicitly off (proxy defaults are also deny, this is documentation):
+      CONTAINERS: 1
+      STATS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      # Explicitly off (proxy defaults are also deny):
       EXEC: 0
       CREATE: 0
       POST: 0
@@ -82,8 +73,7 @@ services:
       CONFIGS: 0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # Documentation only: `expose` does NOT publish a host port. 2375 is
-    # reachable solely from watchtower.net (no `ports:`, no host binding).
+    # Not host-published: reachable only from watchtower.net
     expose:
       - "2375"
     networks:

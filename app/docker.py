@@ -33,11 +33,7 @@ class _UnixConn(http.client.HTTPConnection):
 
 
 def _target() -> tuple[str, int | None]:
-    """(unix path | tcp host, tcp port) derived from WT_DOCKER_SOCKET.
-
-    Accepts a socket path (default) or ``tcp://host:port`` — the latter points
-    at a docker-socket-proxy so the app never sees the raw Engine socket.
-    """
+    """WT_DOCKER_SOCKET as (unix path, None) or (tcp host, tcp port)."""
     value = config.docker_socket
     if value.startswith("tcp://"):
         host, _, port = value[len("tcp://"):].rpartition(":")
