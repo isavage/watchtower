@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
+import { OpsPage } from "./pages/OpsPage";
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+          <Route path="/operations" element={<Gate><OpsPage /></Gate>} />
           <Route
             path="/"
             element={
