@@ -7,9 +7,15 @@ services:
     # Read the HOST's metrics, not the container's own.
     pid: host
     volumes:
-      - /:/host:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      - /etc/ufw/ufw.conf:/host/etc/ufw/ufw.conf:ro
+      - /etc/default/ufw:/host/etc/default/ufw:ro
+      - /etc/ufw/user.rules:/host/etc/ufw/user.rules:ro
+      - /etc/nftables.conf:/host/etc/nftables.conf:ro
+      - /etc/ssh/sshd_config:/host/etc/ssh/sshd_config:ro
+      - /var/log/auth.log:/host/var/log/auth.log:ro
+      - /var/log/secure:/host/var/log/secure:ro
       - watchtower-data:/data
       # Enables the Docker page (container CPU/mem). Remove to disable it.
       - /var/run/docker.sock:/var/run/docker.sock:ro
