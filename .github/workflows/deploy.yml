@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main, master, ft/sidebar]
+    paths-ignore: ['.gitignore', 'README.md', 'docs/**']
   workflow_dispatch:
     inputs:
       no_cache:

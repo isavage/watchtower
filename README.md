@@ -9,9 +9,9 @@ time-range selectors and live-updating charts.
 
 <!-- Replace the images in docs/screenshots/ with your final captures. -->
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](docs/screenshots/dash.png)
 
-![CPU page](docs/screenshots/cpu.png)
+![Memory page](docs/screenshots/mem.png)
 
 ## Features
 
