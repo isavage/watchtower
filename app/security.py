@@ -45,8 +45,32 @@ def _ufw_status() -> tuple[str, str | None]:
         if match and "ACCEPT" in line: readable.append(f"allow tcp {match.group(1)}")
     return f"Status: {status}\n" + ("\n".join(dict.fromkeys(policies + readable)) if (policies or readable) else "No readable user port rules found."), re_ if not rules else None
 def _matches(rows: list[str], pattern: str): return [r for r in rows if re.search(pattern,r,re.I)]
+def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
+    """Parse /proc/net/tcp|tcp6|udp|udp6 for LISTEN sockets."""
+    lines=[]
+    for proto in ["tcp", "tcp6", "udp", "udp6"]:
+        try:
+            with _host(f"/proc/net/{proto}").open() as fh:
+                for row in fh:
+                    f=row.split()
+                    if len(f)<10: continue
+                    st=f[3]
+                    if proto.startswith("tcp") and st!="0A": continue
+                    local=f[1]
+                    addr,port=local.rsplit(":",1)
+                    port=int(port,16)
+                    if proto.startswith("tcp"):
+                        if addr=="00000000": addr="0.0.0.0"
+                        elif addr=="00000000000000000000000000000000": addr="::"
+                    else:
+                        if addr=="00000000": addr="0.0.0.0"
+                        elif len(addr)==32: addr=":".join(addr[i:i+4] for i in range(0,32,4))
+                    lines.append(f"{proto.upper()} LISTEN {addr}:{port}")
+        except OSError: pass
+    return lines, None if lines else "No listening sockets found in /proc/net"
+
 def snapshot() -> dict:
-    ufw, ufwe = _ufw_status(); ipt, ipte = _file("/etc/ufw/user.rules"); nft, nfte = _file("/etc/nftables.conf"); sockets, socketse = _run_host_binary("ss", ["-lntup"]); auth=_tail(["/var/log/auth.log","/var/log/secure"])
+    ufw, ufwe = _ufw_status(); ipt, ipte = _file("/etc/ufw/user.rules"); nft, nfte = _file("/etc/nftables.conf"); sockets, socketse = _parse_proc_net_listeners(); auth=_tail(["/var/log/auth.log","/var/log/secure"])
     try: ssh=[x.strip() for x in _host("/etc/ssh/sshd_config").read_text(errors="replace").splitlines() if x.strip() and not x.lstrip().startswith("#")]
     except OSError: ssh=[]
-    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"auth_log":auth,"config":ssh},"listeners":{"lines":sockets.splitlines()[:100],"error":socketse},"signals":{"failed_auth":_matches(auth,r"failed password|authentication failure|invalid user"),"accepted_auth":_matches(auth,r"accepted (password|publickey)")}}
+    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"auth_log":auth,"config":ssh},"listeners":{"lines":sockets[:100],"error":socketse},"signals":{"failed_auth":_matches(auth,r"failed password|authentication failure|invalid user"),"accepted_auth":_matches(auth,r"accepted (password|publickey)")}}
