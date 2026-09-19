@@ -13,6 +13,8 @@ time-range selectors and live-updating charts.
 
 ![Docker page](docs/screenshots/docker.png)
 
+![Network page](docs/screenshots/net.png)
+
 ![Memory page](docs/screenshots/mem.png)
 
 ## Features

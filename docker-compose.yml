@@ -13,7 +13,9 @@ services:
       - /etc/default/ufw:/host/etc/default/ufw:ro
       - /etc/ufw/user.rules:/host/etc/ufw/user.rules:ro
       - /etc/nftables.conf:/host/etc/nftables.conf:ro
-      - /etc/ssh/sshd_config:/host/etc/ssh/sshd_config:ro
+      # Mount the whole dir: sshd_config is mostly `Include sshd_config.d/*.conf`,
+      # so the file-only mount hid the real port/auth settings.
+      - /etc/ssh:/host/etc/ssh:ro
       - /var/log/auth.log:/host/var/log/auth.log:ro
       - /var/log/secure:/host/var/log/secure:ro
       - watchtower-data:/data

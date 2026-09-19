@@ -1,8 +1,10 @@
 """Read-only host security facts for the Security page."""
 from __future__ import annotations
+import ipaddress
 import os
 import re, subprocess, time
 from pathlib import Path
+from . import hostnet
 from .config import config
 ROOT = Path(config.host_root or "/")
 def _run(command: list[str], timeout: float = 4, env: dict[str, str] | None = None) -> tuple[str, str | None]:
@@ -35,44 +37,99 @@ def _ufw_status() -> tuple[str, str | None]:
     status = "active" if "ENABLED=yes" in conf else "inactive"
     readable=[]
     policies = []
+    policy_words = {"ACCEPT": "allow", "DROP": "deny", "REJECT": "deny", "REFUSE": "deny"}
     for line in defaults.splitlines():
-        match = re.match(r"DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY=(\w+)", line)
-        if match: policies.append(f"default {match.group(1).lower()}: {match.group(2).lower()}")
+        # /etc/default/ufw quotes the values: DEFAULT_INPUT_POLICY="DROP"
+        match = re.match(r'DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY="?(\w+)"?', line)
+        if match:
+            word = policy_words.get(match.group(2).upper(), match.group(2).lower())
+            policies.append(f"default {match.group(1).lower()}: {word}")
     for line in rules.splitlines():
-        match=re.search(r"--dport\s+(\d+)(?:\s+-m multiport)?", line)
-        if match and "ACCEPT" in line: readable.append(f"allow tcp {match.group(1)}")
-        match=re.search(r"--dports\s+([0-9,:]+)", line)
-        if match and "ACCEPT" in line: readable.append(f"allow tcp {match.group(1)}")
+        if "ACCEPT" not in line: continue
+        pmatch = re.search(r"-p\s+(tcp|udp)", line, re.I)
+        proto = pmatch.group(1).lower() if pmatch else "tcp"
+        match=re.search(r"--dports?\s+([0-9][0-9,:-]*)", line)
+        if match: readable.append(f"allow {proto} {match.group(1)}")
     return f"Status: {status}\n" + ("\n".join(dict.fromkeys(policies + readable)) if (policies or readable) else "No readable user port rules found."), re_ if not rules else None
 def _matches(rows: list[str], pattern: str): return [r for r in rows if re.search(pattern,r,re.I)]
+def _hex_addr(addr: str) -> str:
+    """Decode a /proc/net hex address (little-endian 32-bit words) to readable form."""
+    try:
+        if len(addr) == 8:
+            return ".".join(str(b) for b in bytes.fromhex(addr)[::-1])
+        if len(addr) == 32:
+            words = (addr[i:i+8] for i in range(0, 32, 8))
+            raw = b"".join(bytes.fromhex(w)[::-1] for w in words)
+            return str(ipaddress.IPv6Address(raw))
+    except ValueError: pass
+    return addr
 def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
-    """Parse /proc/net/tcp|tcp6|udp|udp6 for LISTEN sockets."""
+    """LISTEN sockets in the HOST network namespace.
+
+    GOTCHA: /proc/net is a symlink to /proc/self/net, which the kernel resolves
+    in the *reader's* namespace — reading /host/proc/net/tcp from inside the
+    container yields the container's own sockets. hostnet._proc() routes
+    through /proc/1/net (host init, shared PID namespace) when mounted.
+    """
     lines=[]
     for proto in ["tcp", "tcp6", "udp", "udp6"]:
+        listen_states = {"0A"} if proto.startswith("tcp") else {"07"}
         try:
-            with _host(f"/proc/net/{proto}").open() as fh:
+            with open(hostnet._proc("net", proto)) as fh:
                 for row in fh:
                     f=row.split()
-                    if len(f)<10: continue
-                    st=f[3]
-                    if proto.startswith("tcp") and st!="0A": continue
+                    if len(f)<10 or f[3] not in listen_states: continue
                     local=f[1]
                     if ":" not in local: continue
                     addr,port=local.rsplit(":",1)
                     if not port: continue
-                    port=int(port,16)
-                    if proto.startswith("tcp"):
-                        if addr=="00000000": addr="0.0.0.0"
-                        elif addr=="00000000000000000000000000000000": addr="::"
-                    else:
-                        if addr=="00000000": addr="0.0.0.0"
-                        elif len(addr)==32: addr=":".join(addr[i:i+4] for i in range(0,32,4))
-                    lines.append(f"{proto.upper()} LISTEN {addr}:{port}")
+                    try: port=int(port,16)
+                    except ValueError: continue
+                    lines.append(f"{proto.upper()} LISTEN {_hex_addr(addr)}:{port}")
         except OSError: pass
-    return lines, None if lines else "No listening sockets found in /proc/net"
+    return lines, None if lines else "No listening sockets found in the host network namespace."
 
+def _ssh_config() -> tuple[list[str], str | None]:
+    """Effective sshd settings: main file plus any Include'd drop-ins.
+
+    Ubuntu's stock sshd_config is mostly `Include /etc/ssh/sshd_config.d/*.conf`,
+    so reading only the main file shows defaults, not the real port/auth config.
+    """
+    try: raw = _host("/etc/ssh/sshd_config").read_text(errors="replace")
+    except OSError as exc: return [], str(exc)
+    lines: list[str] = []
+    includes: list[str] = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"): continue
+        lines.append(s)
+        match = re.match(r"Include\s+(.+)$", s, re.I)
+        if match: includes += match.group(1).split()
+    for pattern in includes:
+        path = _host(pattern) if pattern.startswith("/") else _host(f"/etc/ssh/{pattern}")
+        try: files = sorted(path.parent.glob(path.name))
+        except OSError: continue
+        for f in files:
+            try: text = f.read_text(errors="replace")
+            except OSError: continue
+            for line in text.splitlines():
+                s = line.strip()
+                if s and not s.startswith("#"): lines.append(f"{f.name}: {s}")
+    return lines, None
+def _sshd_process() -> str | None:
+    """cmdline of a running sshd, found via the shared host PID namespace."""
+    try: pids = [p for p in os.listdir(config.proc_path) if p.isdigit()]
+    except OSError: return None
+    for pid in pids:
+        try:
+            with open(os.path.join(config.proc_path, pid, "comm")) as fh:
+                if fh.read().strip() != "sshd": continue
+            with open(os.path.join(config.proc_path, pid, "cmdline"), "rb") as fh:
+                cmd = fh.read().replace(b"\x00", b" ").decode(errors="replace").strip()
+            return cmd or "sshd"
+        except OSError: continue
+    return None
 def snapshot() -> dict:
     ufw, ufwe = _ufw_status(); ipt, ipte = _file("/etc/ufw/user.rules"); nft, nfte = _file("/etc/nftables.conf"); sockets, socketse = _parse_proc_net_listeners(); auth=_tail(["/var/log/auth.log","/var/log/secure"])
-    try: ssh=[x.strip() for x in _host("/etc/ssh/sshd_config").read_text(errors="replace").splitlines() if x.strip() and not x.lstrip().startswith("#")]
-    except OSError: ssh=[]
-    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"auth_log":auth,"config":ssh},"listeners":{"lines":sockets[:100],"error":socketse},"signals":{"failed_auth":_matches(auth,r"failed password|authentication failure|invalid user"),"accepted_auth":_matches(auth,r"accepted (password|publickey)")}}
+    ssh, ssh_err = _ssh_config(); sshd_proc = _sshd_process()
+    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"auth_log":auth,"config":ssh,"config_error":ssh_err,"process":sshd_proc},"listeners":{"lines":sockets[:100],"error":socketse},"signals":{"failed_auth":_matches(auth,r"failed password|authentication failure|invalid user"),"accepted_auth":_matches(auth,r"accepted (password|publickey)")}}
