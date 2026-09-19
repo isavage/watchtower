@@ -26,23 +26,25 @@ cp .env.example .env      # set WT_ADMIN_USER / WT_ADMIN_PASSWORD / WT_SECRET_KE
 docker compose up -d --build
 ```
 
-Open `http://<your-server>:8080` and sign in. Put it behind a reverse proxy
-with TLS for real use (see below).
+The app publishes **no host port** — `docker compose up` creates a
+`watchtower.net` network, and the reverse proxy container joins it to reach
+the app at `http://watchtower:8080`. See the next section.
 
-### Running on a subdomain behind a reverse proxy
+### Running on a subdomain behind a reverse proxy (nginx container)
 
-Say `watchtower.example.com` → nginx/Caddy/Traefik on the VPS → this app.
-Set these in Doppler (or `.env`):
+Join your nginx container to the network this stack creates — one-off:
 
-| Var                | Value    | Why                                                    |
-| ------------------ | -------- | ------------------------------------------------------ |
-| `WT_COOKIE_SECURE` | `true`   | HTTPS-only session cookie                              |
-| `WT_BIND_ADDR`     | `127.0.0.1` | Publish the port on loopback only, so nobody bypasses the proxy |
+```bash
+docker network connect watchtower.net nginx
+```
 
-No other changes are needed: the frontend uses relative `/api` URLs, so it
-works on any hostname/subpath, and there are no redirects that depend on the
-Host header. Make sure your proxy forwards `Host` and `X-Forwarded-*`
-headers, e.g. nginx:
+(or declare `watchtower.net` as `external: true` in nginx's own compose
+file). Then set `WT_COOKIE_SECURE=true` in Doppler for an HTTPS-only session
+cookie. Nothing else changes: the frontend uses relative `/api` URLs, so it
+works on any hostname, and there are no redirects that depend on the Host
+header.
+
+In the nginx container's config, proxy straight to the service name:
 
 ```nginx
 server {
@@ -51,7 +53,7 @@ server {
     # ssl_certificate ... / ssl_certificate_key ...
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://watchtower:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -60,9 +62,12 @@ server {
 }
 ```
 
-With `WT_BIND_ADDR=127.0.0.1`, also close the port in your firewall
-(`ufw deny 8080` / security group) as defense in depth, and keep the app up
-to date — the monitor itself has no rate limiting on login.
+Since there is no published port, the firewall never sees 8080 — only the
+proxy container is reachable, and it should be the one bound to `:80/:443`.
+
+> **Standalone fallback:** if you ever run without the proxy, temporarily
+> change `expose` back to a `ports:` mapping (`"127.0.0.1:8080:8080"`) and
+> visit the server via an SSH tunnel.
 
 ## CI/CD — automatic deploy from GitHub Actions
 
@@ -81,7 +86,6 @@ Pushes to `main`/`master` deploy to the VPS via
 | `WT_ADMIN_PASSWORD` | strong password                |
 | `WT_SECRET_KEY`     | `openssl rand -hex 32` output  |
 | `WT_COOKIE_SECURE`  | `true` behind TLS, else `false`|
-| `WT_BIND_ADDR`      | `127.0.0.1` when a reverse proxy runs on the same host |
 
 Copy a **Service Token** (`dp.st.…`) for your production config.
 
@@ -136,8 +140,6 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `WT_SAMPLE_INTERVAL` | `2`                    | Seconds between samples                   |
 | `WT_SESSION_DAYS`    | `7`                    | Session sliding-expiry window             |
 | `WT_COOKIE_SECURE`   | `false`                | Enable when served over HTTPS             |
-| `WT_BIND_ADDR`       | `0.0.0.0`              | Set `127.0.0.1` behind a local proxy      |
-| `WT_PORT`            | `8080`                 | Host port published by compose            |
 
 ## API
 

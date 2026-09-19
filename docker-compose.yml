@@ -11,11 +11,12 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - watchtower-data:/data
-    ports:
-      # Behind a reverse proxy on the same host, set WT_BIND_ADDR=127.0.0.1
-      # (in Doppler) so the app is only reachable through the proxy, not
-      # directly on :8080. Leave unset for standalone access.
-      - "${WT_BIND_ADDR:-0.0.0.0}:${WT_PORT:-8080}:8080"
+    # No host port binding: the app is reached only through the reverse proxy
+    # container over the shared network (see `networks` below).
+    expose:
+      - "8080"
+    networks:
+      - watchtower.net
     environment:
       WT_DB_PATH: /data/watchtower.db
       WT_HOST_ROOT: /host
@@ -34,3 +35,8 @@ services:
 
 volumes:
   watchtower-data:
+
+networks:
+  watchtower.net:
+    name: watchtower.net
+    driver: bridge

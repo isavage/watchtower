@@ -20,9 +20,7 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
-    # Uncomment if VPS_*/DOPPLER_TOKEN are stored as GitHub Environment secrets
-    # (Settings → Environments → production) rather than repo secrets.
-    # environment: production
+    environment: prod-IN
     steps:
       - uses: actions/checkout@v4
 
@@ -32,15 +30,17 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           user: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # Doppler service token (dp.st...) — the action installs the Doppler
-          # CLI on the VPS and runs `doppler run -- docker compose up -d`,
-          # injecting WT_* vars in memory. Nothing is written to disk.
+          port: 2222
           doppler_token: ${{ secrets.DOPPLER_TOKEN }}
 
           compose_file: docker-compose.yml
           # Image is built on the VPS from this repo (no registry).
           build: true
           pull: false
+          # `compose down` would delete the watchtower.net network (and
+          # disconnect nginx). `up -d --force-recreate` recreates containers
+          # cleanly without touching it.
+          down: false
           no_cache: ${{ inputs.no_cache || false }}
           # Prune the previous build's image so the disk doesn't fill up.
           cleanup: true
