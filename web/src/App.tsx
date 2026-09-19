@@ -8,6 +8,8 @@ import { DiskPage } from "./pages/DiskPage";
 import { NetworkPage } from "./pages/NetworkPage";
 import { DockerPage } from "./pages/DockerPage";
 import { SecurityPage } from "./pages/SecurityPage";
+import { DockerImagesPage } from "./pages/DockerImagesPage";
+import { DockerNetworksPage } from "./pages/DockerNetworksPage";
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -76,14 +78,10 @@ export default function App() {
             }
           />
           <Route path="/security" element={<Gate><SecurityPage /></Gate>} />
-          <Route
-            path="/docker"
-            element={
-              <Gate>
-                <DockerPage />
-              </Gate>
-            }
-          />
+          <Route path="/docker/containers" element={<Gate><DockerPage /></Gate>} />
+          <Route path="/docker/images" element={<Gate><DockerImagesPage /></Gate>} />
+          <Route path="/docker/networks" element={<Gate><DockerNetworksPage /></Gate>} />
+          <Route path="/docker" element={<Navigate to="/docker/containers" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

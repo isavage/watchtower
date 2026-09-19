@@ -64,7 +64,7 @@ const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
   },
   {
     to: "/docker",
-    label: "Containers",
+    label: "Docker",
     icon: (
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="13" width="5" height="5" rx="1" />
