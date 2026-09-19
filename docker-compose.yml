@@ -31,9 +31,7 @@ services:
       WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
       WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
       WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
-    # `pid: host` + host mounts need this on some distros for /proc access
-    cap_add:
-      - SYS_PTRACE
+    # Host /proc reads use the existing pid namespace; no ptrace capability is needed.
 
 volumes:
   watchtower-data:
