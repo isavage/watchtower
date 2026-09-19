@@ -45,3 +45,47 @@ body {
     @apply bg-white text-ink-900 shadow-sm;
   }
 }
+
+/* Keep content below the fixed mobile navigation and page header. */
+@media (max-width: 767px) {
+  main { padding-top: 4.5rem !important; }
+}
+
+/* Keep shared detail pages inside the viewport on narrow screens. */
+@media (max-width: 767px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  main,
+  main > *,
+  main .grid,
+  main .card,
+  main section {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  main {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 4.5rem !important;
+  }
+
+  main .card {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  main .overflow-x-auto {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  main .text-xl {
+    overflow-wrap: anywhere;
+  }
+}

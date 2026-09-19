@@ -11,6 +11,8 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - watchtower-data:/data
+      # Enables the Docker page (container CPU/mem). Remove to disable it.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     # No host port binding: the app is reached only through the reverse proxy
     # container over the shared network (see `networks` below).
     expose:

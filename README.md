@@ -7,13 +7,29 @@ time-range selectors and live-updating charts.
 
 ![stack](https://img.shields.io/badge/FastAPI-009688) ![stack](https://img.shields.io/badge/React-61DAFB) ![stack](https://img.shields.io/badge/Docker-2496ED)
 
+<!-- Replace the images in docs/screenshots/ with your final captures. -->
+
+![Dashboard](docs/screenshots/dash.png)
+
+![Memory page](docs/screenshots/mem.png)
+
 ## Features
 
+- **Sidebar + drill-down pages** — Dashboard overview plus dedicated pages:
+  **CPU** (per-core bars, user/system/iowait breakdown, top processes),
+  **Memory** (used/buffers/cached breakdown, top processes by RSS),
+  **Disk** (partitions, per-device I/O), **Network** (per-interface rates,
+  link speed, IPs, errors/drops) and **Containers** (live per-container
+  CPU %/mem %/net/block I/O from the Docker Engine API).
 - **Host metrics** — reads the host's `/proc` & `/sys` (mounted read-only) so
-  you monitor the VPS itself, not the container.
+  you monitor the VPS itself, not the container. Includes host network
+  interfaces: per-NIC rates from `/proc/net/dev`, link state/speed/MTU from
+  `/sys/class/net`, and real host IPs (a container's own network namespace
+  would only ever show its Docker bridge IP).
 - **Charts + time selectors** — 5m / 15m / 1h / 6h / 24h / 7d, with
   server-side downsampling so long ranges stay fast.
-- **Live** — summary values refresh every 3s, charts every 10s.
+- **Live** — summary values refresh every 3s, charts every 10s, detail pages
+  every 2–3s.
 - **Auth** — single admin login, server-side sessions in SQLite, HttpOnly
   cookie with sliding expiry.
 - **Tiny footprint** — one image (~180 MB), SQLite storage, 7-day retention.
@@ -140,6 +156,7 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `WT_SAMPLE_INTERVAL` | `2`                    | Seconds between samples                   |
 | `WT_SESSION_DAYS`    | `7`                    | Session sliding-expiry window             |
 | `WT_COOKIE_SECURE`   | `false`                | Enable when served over HTTPS             |
+| `WT_DOCKER_SOCKET`   | `/var/run/docker.sock` | Docker Engine API socket for Containers   |
 
 ## API
 
@@ -149,6 +166,8 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `/api/auth/logout`      | POST   | Invalidates the session              |
 | `/api/auth/me`          | GET    | Current user or 401                  |
 | `/api/summary`          | GET    | Latest live values                   |
+| `/api/details`          | GET    | Live drill-down: per-core CPU, memory breakdown, partitions, disk I/O, NIC rates, top processes |
+| `/api/docker`           | GET    | Docker containers with live CPU/mem/net/blkio (`available: false` without the socket) |
 | `/api/series?range=1h`  | GET    | Downsampled series for the range     |
 | `/api/health`           | GET    | Liveness                             |
 
@@ -164,6 +183,20 @@ volumes:
   - /proc:/host/proc:ro
   - /sys:/host/sys:ro
 ```
+
+With `WT_HOST_ROOT=/host`, every page reports the **server**, not the
+watchtower container:
+
+- **CPU / Memory / Disk / processes** — via psutil pointed at the host's
+  `/proc` (`PROCFS_PATH`) and the shared PID namespace.
+- **Network** — psutil's interface APIs are namespace-scoped ioctls, so they
+  can't see the host from inside a container. The app parses the host's
+  `/proc/net/dev`, `/sys/class/net/*`, `/proc/net/fib_trie`,
+  `/proc/net/route` and `/proc/net/if_inet6` instead (see `app/hostnet.py`).
+  Link speed shows `—` on virt/VPS NICs that don't report it.
+- **Containers** — deliberately the exception: it queries the Docker Engine
+  API over the mounted socket, so it shows per-container usage (which
+  includes watchtower itself).
 
 If your reverse proxy terminates TLS, forward the original scheme and set
 `WT_COOKIE_SECURE=true` so the session cookie is only sent over HTTPS.

@@ -2,7 +2,8 @@ name: Deploy
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, ft/hostnetwork]
+    paths-ignore: ['.gitignore', 'README.md', 'docs/**']
   workflow_dispatch:
     inputs:
       no_cache:
@@ -10,6 +11,7 @@ on:
         required: false
         type: boolean
         default: false
+  
 
 # Never run two deploys at once; let the in-flight one finish.
 concurrency:
