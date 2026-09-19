@@ -14,7 +14,7 @@ export function MetricCard({
   right?: ReactNode;
 }) {
   return (
-    <section className="card flex flex-col p-5">
+    <section className="card min-w-0 flex flex-col p-4 sm:p-5">
       <header className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
@@ -27,7 +27,7 @@ export function MetricCard({
           {value}
         </div>
       )}
-      <div className="mt-auto">{children}</div>
+      <div className="mt-auto min-w-0">{children}</div>
     </section>
   );
 }
