@@ -9,7 +9,7 @@ function PortBadges({ ports }: { ports: { PublicPort?: number; PrivatePort: numb
   return <div className="flex max-w-[220px] flex-wrap gap-1">{ports.map((port, index) => {
     const host = port.PublicPort != null;
     return <span key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`} title={host ? "Published host port" : "Container-only exposed port"} className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"}`}>
-      {host ? `${port.PublicPort}:` : "exposed "}{port.PrivatePort}/{port.Type}
+      {host ? `${port.PublicPort}:` : ""}{port.PrivatePort}/{port.Type}
     </span>;
   })}</div>;
 }
