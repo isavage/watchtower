@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import type { RangeKey } from "../lib/api";
@@ -113,6 +113,8 @@ export function Layout({
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const inDocker = pathname.startsWith("/docker/");
+  const [dockerOpen, setDockerOpen] = useState(inDocker);
+  useEffect(() => { setDockerOpen(inDocker); }, [inDocker]);
 
   return (
     <div className="flex min-h-screen">
@@ -128,7 +130,14 @@ export function Layout({
         </div>
 
         <nav className="mt-1 flex-1 space-y-0.5 px-3">
-          {NAV.map((item) => (
+          {NAV.map((item) => item.to === "/docker" ? (
+            <div key={item.to}>
+              <button type="button" onClick={() => setDockerOpen((open) => !open)} className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors ${dockerOpen ? "bg-ink-900 text-white" : "text-ink-500 hover:bg-ink-100 hover:text-ink-900"}`}>
+                {item.icon}<span className="flex-1">{item.label}</span><span className={`text-xs transition-transform ${dockerOpen ? "rotate-90" : ""}`}>›</span>
+              </button>
+              {dockerOpen && <div className="ml-5 mt-0.5 space-y-0.5 border-l border-ink-200 pl-3">{DOCKER_NAV.map((child) => <NavLink key={child.to} to={child.to} className={({ isActive }) => `block rounded-lg px-3 py-1.5 text-xs font-medium ${isActive ? "bg-ink-100 text-ink-900" : "text-ink-400 hover:bg-ink-50 hover:text-ink-700"}`}>{child.label}</NavLink>)}</div>}
+            </div>
+          ) : (
             <NavLink
               key={item.to}
               to={item.to}
@@ -145,15 +154,6 @@ export function Layout({
               {item.label}
             </NavLink>
           ))}
-          {inDocker && (
-            <div className="ml-2 border-l border-ink-200 pl-3 pt-1 space-y-0.5">
-              {DOCKER_NAV.map((item) => (
-                <NavLink key={item.to} to={item.to} className={({ isActive }) => `block rounded-lg px-3 py-1.5 text-xs font-medium ${isActive ? "bg-ink-100 text-ink-900" : "text-ink-400 hover:bg-ink-50 hover:text-ink-700"}`}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-          )}
         </nav>
 
         <div className="border-t border-ink-200/70 px-5 py-4">
