@@ -1,0 +1,14 @@
+# Build-context hygiene: the image compiles the frontend itself.
+.git
+.github
+.venv
+data
+.env
+.env.*
+node_modules
+web/node_modules
+web/dist
+__pycache__
+*.pyc
+.DS_Store
+README.md

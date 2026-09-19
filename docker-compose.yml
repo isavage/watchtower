@@ -1,0 +1,33 @@
+services:
+  watchtower:
+    build: .
+    image: watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    # Read the HOST's metrics, not the container's own.
+    pid: host
+    volumes:
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - watchtower-data:/data
+    ports:
+      - "8080:8080"
+    environment:
+      WT_DB_PATH: /data/watchtower.db
+      WT_HOST_ROOT: /host
+      # Values come from Doppler (injected via `doppler run` on the VPS) or a
+      # local .env file. Required vars fail fast instead of falling back to
+      # insecure dev defaults.
+      WT_ADMIN_USER: ${WT_ADMIN_USER:-admin}
+      WT_ADMIN_PASSWORD: ${WT_ADMIN_PASSWORD:?WT_ADMIN_PASSWORD not set (check Doppler)}
+      WT_SECRET_KEY: ${WT_SECRET_KEY:?WT_SECRET_KEY not set (check Doppler)}
+      WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
+      WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
+      WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
+    # `pid: host` + host mounts need this on some distros for /proc access
+    cap_add:
+      - SYS_PTRACE
+
+volumes:
+  watchtower-data:
