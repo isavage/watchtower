@@ -39,7 +39,7 @@ def _ufw_status() -> tuple[str, str | None]:
     policies = []
     policy_words = {"ACCEPT": "allow", "DROP": "deny", "REJECT": "deny", "REFUSE": "deny"}
     for line in defaults.splitlines():
-        # /etc/default/ufw quotes the values: DEFAULT_INPUT_POLICY="DROP"
+        # values are quoted: DEFAULT_INPUT_POLICY="DROP"
         match = re.match(r'DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY="?(\w+)"?', line)
         if match:
             word = policy_words.get(match.group(2).upper(), match.group(2).lower())
@@ -64,13 +64,7 @@ def _hex_addr(addr: str) -> str:
     except ValueError: pass
     return addr
 def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
-    """LISTEN sockets in the HOST network namespace.
-
-    GOTCHA: /proc/net is a symlink to /proc/self/net, which the kernel resolves
-    in the *reader's* namespace — reading /host/proc/net/tcp from inside the
-    container yields the container's own sockets. hostnet._proc() routes
-    through /proc/1/net (host init, shared PID namespace) when mounted.
-    """
+    """LISTEN sockets in the host namespace via hostnet._proc (see its GOTCHA)."""
     lines=[]
     for proto in ["tcp", "tcp6", "udp", "udp6"]:
         listen_states = {"0A"} if proto.startswith("tcp") else {"07"}
@@ -90,11 +84,7 @@ def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
     return lines, None if lines else "No listening sockets found in the host network namespace."
 
 def _ssh_config() -> tuple[list[str], str | None]:
-    """Effective sshd settings: main file plus any Include'd drop-ins.
-
-    Ubuntu's stock sshd_config is mostly `Include /etc/ssh/sshd_config.d/*.conf`,
-    so reading only the main file shows defaults, not the real port/auth config.
-    """
+    """Effective sshd settings: main file plus any Include'd drop-ins."""
     try: raw = _host("/etc/ssh/sshd_config").read_text(errors="replace")
     except OSError as exc: return [], str(exc)
     lines: list[str] = []
