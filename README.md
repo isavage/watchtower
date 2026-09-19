@@ -27,7 +27,42 @@ docker compose up -d --build
 ```
 
 Open `http://<your-server>:8080` and sign in. Put it behind a reverse proxy
-with TLS for real use (set `WT_COOKIE_SECURE=true` then).
+with TLS for real use (see below).
+
+### Running on a subdomain behind a reverse proxy
+
+Say `watchtower.example.com` → nginx/Caddy/Traefik on the VPS → this app.
+Set these in Doppler (or `.env`):
+
+| Var                | Value    | Why                                                    |
+| ------------------ | -------- | ------------------------------------------------------ |
+| `WT_COOKIE_SECURE` | `true`   | HTTPS-only session cookie                              |
+| `WT_BIND_ADDR`     | `127.0.0.1` | Publish the port on loopback only, so nobody bypasses the proxy |
+
+No other changes are needed: the frontend uses relative `/api` URLs, so it
+works on any hostname/subpath, and there are no redirects that depend on the
+Host header. Make sure your proxy forwards `Host` and `X-Forwarded-*`
+headers, e.g. nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name watchtower.example.com;
+    # ssl_certificate ... / ssl_certificate_key ...
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+With `WT_BIND_ADDR=127.0.0.1`, also close the port in your firewall
+(`ufw deny 8080` / security group) as defense in depth, and keep the app up
+to date — the monitor itself has no rate limiting on login.
 
 ## CI/CD — automatic deploy from GitHub Actions
 
@@ -46,6 +81,7 @@ Pushes to `main`/`master` deploy to the VPS via
 | `WT_ADMIN_PASSWORD` | strong password                |
 | `WT_SECRET_KEY`     | `openssl rand -hex 32` output  |
 | `WT_COOKIE_SECURE`  | `true` behind TLS, else `false`|
+| `WT_BIND_ADDR`      | `127.0.0.1` when a reverse proxy runs on the same host |
 
 Copy a **Service Token** (`dp.st.…`) for your production config.
 
@@ -100,6 +136,8 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `WT_SAMPLE_INTERVAL` | `2`                    | Seconds between samples                   |
 | `WT_SESSION_DAYS`    | `7`                    | Session sliding-expiry window             |
 | `WT_COOKIE_SECURE`   | `false`                | Enable when served over HTTPS             |
+| `WT_BIND_ADDR`       | `0.0.0.0`              | Set `127.0.0.1` behind a local proxy      |
+| `WT_PORT`            | `8080`                 | Host port published by compose            |
 
 ## API
 
