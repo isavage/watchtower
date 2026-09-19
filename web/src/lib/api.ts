@@ -133,6 +133,7 @@ export interface DockerContainer {
   name: string;
   image: string;
   ports: { PublicPort?: number; PrivatePort: number; Type: string }[];
+  state: string;
   status: string;
   started: number;
   age: number | null;

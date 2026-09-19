@@ -42,6 +42,29 @@ def _sys(*parts: str) -> str:
     return os.path.join(root, "sys", *parts)
 
 
+def host_mounts() -> list[tuple[str, str, str]] | None:
+    """(device, mountpoint, fstype) from the HOST mount namespace.
+
+    GOTCHA: /proc/mounts is a symlink to /proc/self/mounts (reader's
+    namespace), so PID 1's mounts must be read directly, like the net files.
+    """
+    if not config.uses_host_proc:
+        return None
+    try:
+        with open(os.path.join(config.proc_path, "1", "mounts")) as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    rows: list[tuple[str, str, str]] = []
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) < 3:
+            continue
+        mnt = f[1].replace("\\040", " ").replace("\\011", "\t")
+        rows.append((f[0], mnt, f[2]))
+    return rows or None
+
+
 def net_dev() -> dict[str, dict] | None:
     """Per-interface byte/packet counters from /proc/net/dev.
 

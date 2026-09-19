@@ -136,7 +136,10 @@ export function Layout({
               <path d="M3 12h4l2 6 4-14 2 8h6" />
             </svg>
           </div>
-          <span className="text-[15px] font-semibold tracking-tight text-ink-900">Watchtower</span>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[15px] font-semibold tracking-tight text-ink-900">Watchtower</span>
+            <span className="text-[10px] font-medium text-ink-400">v{__APP_VERSION__}</span>
+          </div>
         </div>
 
         <nav className="mt-1 flex-1 space-y-0.5 px-3">
