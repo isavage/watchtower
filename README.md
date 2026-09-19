@@ -5,6 +5,13 @@ Runs as a Docker container on your server and reports the **host's**
 CPU, memory, disk I/O, network throughput, uptime and process count — with
 time-range selectors and live-updating charts.
 
+Most host monitors get full visibility the blunt way: `privileged: true`, the
+Docker socket mounted in, or the whole host filesystem bind-mounted "read-only".
+Watchtower takes the **least-privilege** route instead — every host reading
+comes from one narrow, explicit source (a specific `/proc` or `/sys` file, a
+single config file, or a scoped read-only Docker API), and nothing else is
+reachable at all. Same visibility, dramatically smaller attack surface.
+
 ![stack](https://img.shields.io/badge/FastAPI-009688) ![stack](https://img.shields.io/badge/React-61DAFB) ![stack](https://img.shields.io/badge/Docker-2496ED)
 
 <!-- Replace the images in docs/screenshots/ with your final captures. -->
@@ -43,6 +50,26 @@ time-range selectors and live-updating charts.
   cookie with sliding expiry.
 - **Tiny footprint** — one image (~180 MB) plus a minimal socket-proxy
   sidecar, SQLite storage, 7-day retention.
+
+## Least privilege, by design
+
+If this app were compromised, what could it touch? That question shapes
+every host-access decision — compare against how typical monitors solve the
+same problems:
+
+| Need | Common approach | Watchtower |
+| --- | --- | --- |
+| Host metrics | `privileged: true` or running an agent directly on the host | `pid: host` + `/proc` and `/sys` mounted **read-only**; no capabilities, no privileged mode |
+| Docker visibility | Mount `/var/run/docker.sock` into the app (root-equivalent on the host) | [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) sidecar allow-listing **four read-only endpoints** (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`); exec, kill, create, delete are denied at the proxy, and the raw socket never touches the app container |
+| Firewall / sshd state | Shell out to `ufw status` / read `/etc/shadow`-adjacent paths with broad mounts | Parse exactly **five config files** (`/etc/ufw/*`, `/etc/nftables.conf`, `/etc/ssh`) plus one log (`/var/log/auth.log`), each mounted individually, read-only |
+| Listening sockets | Run `ss`/`netstat` in a privileged sidecar | Read `/proc/1/net/*` directly — host truth, zero execution |
+| Disk partitions | Bind-mount the whole host root "just for statvfs" | Host mount table from `/proc/1/mounts`; the root disk is measured through the container's own filesystem (it lives on it). Extra data disks appear **only** if you opt in by mounting that one path |
+| Network exposure | Publish a port on the host interface (`-p 8080:8080`) | **No published ports, ever** — reachable only through your own reverse proxy over an internal Docker network |
+
+The upshot: the app holds no host write access, no root-equivalent socket,
+no shell-outs, and no inbound port. It reads exactly the files it parses and
+nothing more — so "what does this do to my server?" has a short, auditable
+answer.
 
 ## Quick start (Docker — on your server)
 
