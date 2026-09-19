@@ -27,6 +27,13 @@ def host_mode() -> bool:
 
 
 def _proc(*parts: str) -> str:
+    # GOTCHA: /proc/net is a symlink to /proc/self/net, which the kernel
+    # resolves in the *reader's* namespace — so /host/proc/net/dev from
+    # inside the container is still the container's own view. PID 1 is the
+    # host's init (pid: host), so /host/proc/1/net/* genuinely reaches the
+    # host network namespace.
+    if config.uses_host_proc and parts and parts[0] == "net":
+        return os.path.join(config.proc_path, "1", "net", *parts[1:])
     return os.path.join(config.proc_path, *parts)
 
 
