@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import store
-from .api import auth_routes, metrics_routes
+from .api import auth_routes, metrics_routes, ops_routes
 from .config import config
 from .sampler import run_sampler
 
@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Watchtower", lifespan=lifespan)
 app.include_router(auth_routes.router)
 app.include_router(metrics_routes.router)
+app.include_router(ops_routes.router)
 
 
 @app.get("/api/health")

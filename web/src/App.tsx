@@ -7,6 +7,7 @@ import { MemoryPage } from "./pages/MemoryPage";
 import { DiskPage } from "./pages/DiskPage";
 import { NetworkPage } from "./pages/NetworkPage";
 import { DockerPage } from "./pages/DockerPage";
+import { OpsPage } from "./pages/OpsPage";
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+          <Route path="/operations" element={<Gate><OpsPage /></Gate>} />
           <Route
             path="/"
             element={
