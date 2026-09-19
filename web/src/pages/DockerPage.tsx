@@ -18,7 +18,7 @@ export function DockerPage() {
 
   return (
     <Layout
-      title="Containers"
+      title="Docker"
       subtitle="Docker workloads on this host, live from the Engine API"
       actions={
         data?.available ? (
@@ -68,7 +68,8 @@ export function DockerPage() {
               <thead>
                 <tr>
                   <Th>Container</Th>
-                  <Th className="hidden sm:table-cell">Image</Th>
+                  <Th className="hidden sm:table-cell">Ports</Th>
+                  <Th className="hidden md:table-cell">Image</Th>
                   <Th>Status</Th>
                   <Th className="w-36">CPU</Th>
                   <Th className="w-36">Memory</Th>
@@ -84,7 +85,8 @@ export function DockerPage() {
                       <div className="font-medium text-ink-900">{c.name}</div>
                       <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
                     </Td>
-                    <Td className="hidden max-w-[180px] truncate text-ink-500 sm:table-cell">{c.image}</Td>
+                    <Td className="hidden text-ink-500 sm:table-cell">{(c.ports ?? []).map((p: any) => `${p.PublicPort ? `${p.PublicPort}:` : ""}${p.PrivatePort}/${p.Type}`).join(", ") || "—"}</Td>
+                    <Td className="hidden max-w-[180px] truncate text-ink-500 md:table-cell">{c.image}</Td>
                     <Td>
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${

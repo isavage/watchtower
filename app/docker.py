@@ -114,6 +114,28 @@ def _age_seconds(created: str | int | float | None) -> float | None:
         return None
 
 
+def images() -> dict:
+    if not _socket_present():
+        return {"available": False, "images": []}
+    items = _get("/images/json")
+    if not isinstance(items, list):
+        return {"available": False, "images": []}
+    return {"available": True, "images": [{"id": str(i.get("Id", ""))[-12:], "tags": i.get("RepoTags") or [], "size": float(i.get("Size") or 0), "created": i.get("Created")} for i in items]}
+
+
+def networks() -> dict:
+    if not _socket_present():
+        return {"available": False, "networks": []}
+    items = _get("/networks")
+    if not isinstance(items, list):
+        return {"available": False, "networks": []}
+    rows = []
+    for item in items:
+        ipam = item.get("IPAM") or {}
+        rows.append({"id": str(item.get("Id", ""))[:12], "name": item.get("Name", ""), "driver": item.get("Driver", ""), "scope": item.get("Scope", ""), "internal": bool(item.get("Internal")), "subnets": [c.get("Subnet") for c in (ipam.get("Config") or []) if c.get("Subnet")], "gateways": [c.get("Gateway") for c in (ipam.get("Config") or []) if c.get("Gateway")], "containers": len(item.get("Containers") or {})})
+    return {"available": True, "networks": rows}
+
+
 def containers() -> dict:
     if not _socket_present():
         return {"available": False, "containers": []}
@@ -130,6 +152,7 @@ def containers() -> dict:
             "id": cid[:12],
             "name": (it.get("Names") or [cid[:12]])[0].lstrip("/"),
             "image": it.get("Image", "?"),
+            "ports": it.get("Ports") or [],
             "state": it.get("State", "unknown"),
             "status": it.get("Status", ""),
             "age": _age_seconds(it.get("Created")),

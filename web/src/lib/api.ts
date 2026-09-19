@@ -132,7 +132,7 @@ export interface DockerContainer {
   id: string;
   name: string;
   image: string;
-  state: string;
+  ports: { PublicPort?: number; PrivatePort: number; Type: string }[];
   status: string;
   started: number;
   age: number | null;
