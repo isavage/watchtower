@@ -30,16 +30,20 @@ def _file(path: str, limit: int = 80) -> tuple[str, str | None]:
     try: return "\n".join(_host(path).read_text(errors="replace").splitlines()[:limit]), None
     except OSError as exc: return "", str(exc)
 def _ufw_status() -> tuple[str, str | None]:
-    conf, ce = _file("/etc/ufw/ufw.conf", 20); rules, re_ = _file("/etc/ufw/user.rules", 240)
+    conf, ce = _file("/etc/ufw/ufw.conf", 20); defaults, de = _file("/etc/default/ufw", 40); rules, re_ = _file("/etc/ufw/user.rules", 240)
     if ce and re_: return "", ce
     status = "active" if "ENABLED=yes" in conf else "inactive"
     readable=[]
+    policies = []
+    for line in defaults.splitlines():
+        match = re.match(r"DEFAULT_(INPUT|OUTPUT|FORWARD)_POLICY=(\\w+)", line)
+        if match: policies.append(f"default {match.group(1).lower()}: {match.group(2).lower()}")
     for line in rules.splitlines():
         match=re.search(r"--dport\s+(\d+)(?:\s+-m multiport)?", line)
         if match and "ACCEPT" in line: readable.append(f"allow tcp {match.group(1)}")
         match=re.search(r"--dports\s+([0-9,:]+)", line)
         if match and "ACCEPT" in line: readable.append(f"allow tcp {match.group(1)}")
-    return f"Status: {status}\n" + ("\n".join(dict.fromkeys(readable)) if readable else "No readable user port rules found."), re_ if not rules else None
+    return f"Status: {status}\n" + ("\n".join(dict.fromkeys(policies + readable)) if (policies or readable) else "No readable user port rules found."), re_ if not rules else None
 def _matches(rows: list[str], pattern: str): return [r for r in rows if re.search(pattern,r,re.I)]
 def snapshot() -> dict:
     ufw, ufwe = _ufw_status(); ipt, ipte = _file("/etc/ufw/user.rules"); nft, nfte = _file("/etc/nftables.conf"); sockets, socketse = _run_host_binary("ss", ["-lntup"]); auth=_tail(["/var/log/auth.log","/var/log/secure"])
