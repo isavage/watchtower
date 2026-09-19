@@ -99,13 +99,17 @@ def _blkio_bytes(stats: dict) -> float:
     return float(total)
 
 
-def _age_seconds(created_iso: str | None) -> float | None:
-    if not created_iso:
+def _age_seconds(created: str | int | float | None) -> float | None:
+    if created is None or created == "":
         return None
     try:
-        dt = datetime.fromisoformat(created_iso.replace("Z", "+00:00"))
+        if isinstance(created, (int, float)):
+            # Docker Engine API returns Created as a unix timestamp (seconds).
+            dt = datetime.fromtimestamp(created, tz=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
         return max((datetime.now(timezone.utc) - dt).total_seconds(), 0.0)
-    except ValueError:
+    except (ValueError, OSError, OverflowError):
         return None
 
 
