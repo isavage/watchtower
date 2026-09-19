@@ -10,6 +10,7 @@ import http.client
 import json
 import logging
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import psutil
@@ -122,8 +123,8 @@ def containers() -> dict:
         return {"available": False, "containers": []}
 
     mem_total = psutil.virtual_memory().total
-    out = []
-    for it in items:
+
+    def _build_row(it: dict) -> dict:
         cid = it.get("Id", "")
         row: dict = {
             "id": cid[:12],
@@ -141,6 +142,8 @@ def containers() -> dict:
             "blkio": None,
             "pids": None,
         }
+        # Each stats call blocks ~1s inside the daemon (one sampling interval),
+        # so fetch them concurrently instead of serially.
         stats = _get(f"/containers/{cid}/stats?stream=false", timeout=8.0)
         if isinstance(stats, dict):
             row["cpu_pct"] = round(_cpu_percent(stats), 2)
@@ -155,7 +158,11 @@ def containers() -> dict:
             pid_entry = (stats.get("pstats") or {}).get("pid_stats") or {}
             if pid_entry:
                 row["pids"] = next(iter(pid_entry.values()), {}).get("current_pids")
-        out.append(row)
+        return row
+
+    workers = min(8, max(2, len(items)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        out = list(pool.map(_build_row, items))
 
     out.sort(key=lambda r: (r.get("cpu_pct") or 0), reverse=True)
     return {
