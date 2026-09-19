@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import type { RangeKey } from "../lib/api";
@@ -114,7 +114,17 @@ export function Layout({
   const { pathname } = useLocation();
   const inDocker = pathname.startsWith("/docker/");
   const [dockerOpen, setDockerOpen] = useState(inDocker);
+  const dockerNavRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setDockerOpen(inDocker); }, [inDocker]);
+  useEffect(() => {
+    const nav = dockerNavRef.current;
+    if (!nav) return;
+    const saved = sessionStorage.getItem("watchtower-mobile-nav-scroll");
+    if (saved) nav.scrollLeft = Number(saved);
+    const save = () => sessionStorage.setItem("watchtower-mobile-nav-scroll", String(nav.scrollLeft));
+    nav.addEventListener("scroll", save, { passive: true });
+    return () => nav.removeEventListener("scroll", save);
+  }, []);
 
   return (
     <div className="flex min-h-screen">
@@ -184,7 +194,7 @@ export function Layout({
           </svg>
         </div>
         <span className="text-sm font-semibold text-ink-900">Watchtower</span>
-        <div className="ml-auto flex gap-1 overflow-x-auto">
+        <div ref={dockerNavRef} className="ml-auto flex gap-1 overflow-x-auto">
           {NAV.map((item) => item.to === "/docker" ? (
             <button key={item.to} type="button" onClick={() => setDockerOpen((open) => !open)} className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium ${dockerOpen ? "bg-ink-900 text-white" : "text-ink-500 hover:bg-ink-100"}`}>{item.label} <span className={`inline-block transition-transform ${dockerOpen ? "rotate-90" : ""}`}>›</span></button>
           ) : (
@@ -224,7 +234,7 @@ export function Layout({
           </div>
         </header>
 
-        <main className="flex-1 px-5 py-6 md:px-8">{children}</main>
+        <main className="flex-1 px-5 py-6 md:px-8" style={{ paddingTop: dockerOpen ? undefined : undefined }}>{children}</main>
       </div>
     </div>
   );
