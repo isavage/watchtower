@@ -83,29 +83,65 @@ def _parse_proc_net_listeners() -> tuple[list[str], str | None]:
         except OSError: pass
     return lines, None if lines else "No listening sockets found in the host network namespace."
 
+# Keywords where sshd keeps every occurrence (or where each line opens a new
+# conditional scope) instead of applying first-value-wins.
+_SSH_MULTI = {"acceptenv", "allowgroups", "allowusers", "denygroups", "denyusers",
+              "hostkey", "identityfile", "listenaddress", "subsystem", "match"}
 def _ssh_config() -> tuple[list[str], str | None]:
-    """Effective sshd settings: main file plus any Include'd drop-ins."""
-    try: raw = _host("/etc/ssh/sshd_config").read_text(errors="replace")
-    except OSError as exc: return [], str(exc)
-    lines: list[str] = []
-    includes: list[str] = []
-    for line in raw.splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"): continue
-        lines.append(s)
-        match = re.match(r"Include\s+(.+)$", s, re.I)
-        if match: includes += match.group(1).split()
-    for pattern in includes:
-        path = _host(pattern) if pattern.startswith("/") else _host(f"/etc/ssh/{pattern}")
-        try: files = sorted(path.parent.glob(path.name))
-        except OSError: continue
-        for f in files:
-            try: text = f.read_text(errors="replace")
-            except OSError: continue
-            for line in text.splitlines():
-                s = line.strip()
-                if s and not s.startswith("#"): lines.append(f"{f.name}: {s}")
-    return lines, None
+    """Effective sshd settings, resolved per sshd(8): the FIRST obtained value
+    of each keyword wins, Include is processed in place, and Match sections
+    scope their own settings. Shadowed duplicates are reported as ignored."""
+    root = _host("/etc/ssh/sshd_config")
+    if not root.is_file(): return [], f"{root} not found"
+    entries: list[tuple[str, str, str, str]] = []  # (file label, kw, raw, scope)
+    visited: set[str] = set()
+    def label(path: Path) -> str:
+        try: return str(path.relative_to(_host("/etc/ssh")))
+        except ValueError: return path.name
+    def parse(path: Path, scope: str) -> None:
+        try: visited.add(str(path.resolve()))
+        except OSError: return
+        try: text = path.read_text(errors="replace")
+        except OSError: return
+        lbl = label(path)
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"): continue
+            parts = re.split(r"[=\s]+", s, maxsplit=1)
+            kw, arg = parts[0], parts[1] if len(parts) > 1 else ""
+            k = kw.lower()
+            if k == "include":
+                for pattern in (arg or "").split():
+                    base = _host(pattern) if pattern.startswith("/") else _host(f"/etc/ssh/{pattern}")
+                    try: found = sorted(base.parent.glob(base.name))
+                    except OSError: continue
+                    for f in found:
+                        try:
+                            if str(f.resolve()) in visited: continue
+                        except OSError: pass
+                        parse(f, scope)
+                continue
+            if k == "match":
+                scope = f"Match {arg or '?'}"
+                entries.append((lbl, k, s, scope))
+                continue
+            entries.append((lbl, k, s, scope))
+    parse(root, "global")
+    seen: dict[tuple[str, str], str] = {}
+    effective: list[str] = []
+    ignored: list[str] = []
+    for lbl, k, s, scope in entries:
+        if k == "match":
+            effective.append(f"[{lbl}] {s}")
+            continue
+        key = (scope, k)
+        if k not in _SSH_MULTI and key in seen:
+            ignored.append(f"ignored: {s} ({lbl}) — overridden by {seen[key]}")
+            continue
+        seen.setdefault(key, lbl)
+        prefix = "" if scope == "global" else f"{scope} \u2192 "
+        effective.append(f"{prefix}{s}  [{lbl}]")
+    return effective + ignored, None
 def _sshd_process() -> str | None:
     """cmdline of a running sshd, found via the shared host PID namespace."""
     try: pids = [p for p in os.listdir(config.proc_path) if p.isdigit()]

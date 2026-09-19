@@ -32,7 +32,8 @@ time-range selectors and live-updating charts.
   would only ever show its Docker bridge IP).
 - **Security page** — read-only host visibility: UFW status and default
   policies, iptables/nftables rules, listening sockets in the *host* network
-  namespace, effective sshd config (including `sshd_config.d` drop-ins) and
+  namespace, effective sshd config (first-value-wins across `sshd_config` and
+  its `sshd_config.d` drop-ins, with shadowed lines marked as ignored) and
   recent auth-log signals.
 - **Charts + time selectors** — 5m / 15m / 1h / 6h / 24h / 7d, with
   server-side downsampling so long ranges stay fast.
