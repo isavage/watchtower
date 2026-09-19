@@ -160,7 +160,7 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `WT_SAMPLE_INTERVAL` | `2`                    | Seconds between samples                   |
 | `WT_SESSION_DAYS`    | `7`                    | Session sliding-expiry window             |
 | `WT_COOKIE_SECURE`   | `false`                | Enable when served over HTTPS             |
-| `WT_DOCKER_SOCKET`   | `/var/run/docker.sock` | Docker Engine API socket for Containers   |
+| `WT_DOCKER_SOCKET`   | `/var/run/docker.sock` | Docker Engine API: socket path or `tcp://host:port` (the compose stack points this at docker-socket-proxy) |
 
 ## API
 
@@ -199,8 +199,12 @@ watchtower container:
   `/proc/net/route` and `/proc/net/if_inet6` instead (see `app/hostnet.py`).
   Link speed shows `—` on virt/VPS NICs that don't report it.
 - **Containers** — deliberately the exception: it queries the Docker Engine
-  API over the mounted socket, so it shows per-container usage (which
-  includes watchtower itself).
+  API, so it shows per-container usage (which includes watchtower itself).
+  The raw socket is **not** mounted into the app container; a
+  [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
+  sidecar exposes only the four read-only endpoints the pages use
+  (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`), so a compromised app cannot
+  exec into, kill, or reconfigure other containers.
 
 If your reverse proxy terminates TLS, forward the original scheme and set
 `WT_COOKIE_SECURE=true` so the session cookie is only sent over HTTPS.

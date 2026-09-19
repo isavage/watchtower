@@ -32,9 +32,29 @@ class _UnixConn(http.client.HTTPConnection):
         self.sock = s
 
 
+def _target() -> tuple[str, int | None]:
+    """(unix path | tcp host, tcp port) derived from WT_DOCKER_SOCKET.
+
+    Accepts a socket path (default) or ``tcp://host:port`` — the latter points
+    at a docker-socket-proxy so the app never sees the raw Engine socket.
+    """
+    value = config.docker_socket
+    if value.startswith("tcp://"):
+        host, _, port = value[len("tcp://"):].rpartition(":")
+        return host, int(port or 2375)
+    return value, None
+
+
+def _conn(timeout: float) -> http.client.HTTPConnection:
+    target, port = _target()
+    if port is not None:
+        return http.client.HTTPConnection(target, port=port, timeout=timeout)
+    return _UnixConn(target, timeout=timeout)
+
+
 def _get(path: str, timeout: float = 5.0) -> object | None:
     try:
-        conn = _UnixConn(config.docker_socket, timeout=timeout)
+        conn = _conn(timeout)
         conn.request("GET", path)
         resp = conn.getresponse()
         body = resp.read()
@@ -50,10 +70,14 @@ def _get(path: str, timeout: float = 5.0) -> object | None:
 
 
 def _socket_present() -> bool:
+    target, port = _target()
     try:
+        if port is not None:
+            with socket.create_connection((target, port), timeout=2):
+                return True
         s = socket.socket(socket.AF_UNIX)
         try:
-            return s.connect_ex(config.docker_socket) == 0
+            return s.connect_ex(target) == 0
         finally:
             s.close()
     except OSError:
