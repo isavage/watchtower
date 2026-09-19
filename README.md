@@ -1,7 +1,7 @@
 # Watchtower
 
 A lightweight, self-hosted **VPS / server monitor** with a modern web UI.
-Runs as a single Docker container on your server and reports the **host's**
+Runs as a Docker container on your server and reports the **host's**
 CPU, memory, disk I/O, network throughput, uptime and process count — with
 time-range selectors and live-updating charts.
 
@@ -30,13 +30,18 @@ time-range selectors and live-updating charts.
   interfaces: per-NIC rates from `/proc/net/dev`, link state/speed/MTU from
   `/sys/class/net`, and real host IPs (a container's own network namespace
   would only ever show its Docker bridge IP).
+- **Security page** — read-only host visibility: UFW status and default
+  policies, iptables/nftables rules, listening sockets in the *host* network
+  namespace, effective sshd config (including `sshd_config.d` drop-ins) and
+  recent auth-log signals.
 - **Charts + time selectors** — 5m / 15m / 1h / 6h / 24h / 7d, with
   server-side downsampling so long ranges stay fast.
 - **Live** — summary values refresh every 3s, charts every 10s, detail pages
   every 2–3s.
 - **Auth** — single admin login, server-side sessions in SQLite, HttpOnly
   cookie with sliding expiry.
-- **Tiny footprint** — one image (~180 MB), SQLite storage, 7-day retention.
+- **Tiny footprint** — one image (~180 MB) plus a minimal socket-proxy
+  sidecar, SQLite storage, 7-day retention.
 
 ## Quick start (Docker — on your server)
 
@@ -172,20 +177,23 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `/api/summary`          | GET    | Latest live values                   |
 | `/api/details`          | GET    | Live drill-down: per-core CPU, memory breakdown, partitions, disk I/O, NIC rates, top processes |
 | `/api/docker`           | GET    | Docker containers with live CPU/mem/net/blkio (`available: false` without the socket) |
+| `/api/docker/images`    | GET    | Docker images                        |
+| `/api/docker/networks`  | GET    | Docker networks                      |
+| `/api/security`         | GET    | Read-only host security snapshot (firewall, listeners, sshd, auth log) |
 | `/api/series?range=1h`  | GET    | Downsampled series for the range     |
 | `/api/health`           | GET    | Liveness                             |
 
 ## Notes on host monitoring
 
-`docker-compose.yml` mounts the host filesystem read-only and shares the host
+`docker-compose.yml` mounts specific host paths read-only and shares the host
 PID namespace:
 
 ```yaml
 pid: host
 volumes:
-  - /:/host:ro
   - /proc:/host/proc:ro
   - /sys:/host/sys:ro
+  - /etc/ufw/... , /etc/default/ufw, /etc/nftables.conf, /etc/ssh, /var/log/auth.log
 ```
 
 With `WT_HOST_ROOT=/host`, every page reports the **server**, not the
@@ -198,6 +206,10 @@ watchtower container:
   `/proc/net/dev`, `/sys/class/net/*`, `/proc/net/fib_trie`,
   `/proc/net/route` and `/proc/net/if_inet6` instead (see `app/hostnet.py`).
   Link speed shows `—` on virt/VPS NICs that don't report it.
+- **Security** — firewall state is read from the mounted host config files;
+  listening sockets come from `/proc/1/net/*` because `/proc/net` resolves in
+  the *reader's* namespace (the container's own, if read directly). sshd
+  config follows `Include` directives into `sshd_config.d`.
 - **Containers** — deliberately the exception: it queries the Docker Engine
   API, so it shows per-container usage (which includes watchtower itself).
   The raw socket is **not** mounted into the app container; a
