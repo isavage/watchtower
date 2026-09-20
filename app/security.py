@@ -2,15 +2,11 @@
 from __future__ import annotations
 import ipaddress
 import os
-import re, subprocess, time
+import re, time
 from pathlib import Path
 from . import hostnet
 from .config import config
 ROOT = Path(config.host_root or "/")
-def _run(command: list[str], timeout: float = 4, env: dict[str, str] | None = None) -> tuple[str, str | None]:
-    try: r = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, env=env)
-    except (OSError, subprocess.TimeoutExpired) as exc: return "", str(exc)
-    return r.stdout.strip(), (r.stderr.strip() or f"exit {r.returncode}") if r.returncode else None
 def _host(path: str) -> Path: return ROOT / path.lstrip("/") if config.host_root else Path(path)
 def _tail(names: list[str], limit: int = 80) -> list[str]:
     for name in names:
@@ -19,15 +15,6 @@ def _tail(names: list[str], limit: int = 80) -> list[str]:
             if rows: return rows[-limit:]
         except OSError: pass
     return []
-def _run_host_binary(binary: str, args: list[str]) -> tuple[str, str | None]:
-    for path in [ROOT/"usr/sbin"/binary, ROOT/"usr/bin"/binary, ROOT/"bin"/binary, ROOT/"sbin"/binary]:
-        if path.exists():
-            env = None
-            if config.host_root:
-                host_lib = str(ROOT / "lib/x86_64-linux-gnu")
-                env = {**os.environ, "LD_LIBRARY_PATH": host_lib}
-            return _run([str(path), *args], env=env)
-    return "", f"{binary} is not installed on the host"
 def _file(path: str, limit: int = 80) -> tuple[str, str | None]:
     try: return "\n".join(_host(path).read_text(errors="replace").splitlines()[:limit]), None
     except OSError as exc: return "", str(exc)
