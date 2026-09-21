@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -8,7 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import type { MetricPoint } from "../lib/api";
-import { fmtBytes, fmtClock, fmtClockWithHours } from "../lib/format";
+import { fmtBytes, fmtClock, fmtClockWithDate, fmtClockWithHours } from "../lib/format";
 
 interface Series {
   key: keyof MetricPoint;
@@ -55,6 +56,14 @@ function ChartTooltip({ active, payload, label, unit }: any) {
 }
 
 export function MetricChart({ data, series, unit, domainMax = "auto", wide }: Props) {
+  const isMultiDay = useMemo(() => {
+    if (!data || data.length < 2) return false;
+    const first = data[0]?.ts;
+    const last = data[data.length - 1]?.ts;
+    if (typeof first !== "number" || typeof last !== "number") return false;
+    return Math.abs(last - first) > 86400;
+  }, [data]);
+
   const gradient = (id: string, color: string) => (
     <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stopColor={color} stopOpacity={0.28} />
@@ -71,8 +80,8 @@ export function MetricChart({ data, series, unit, domainMax = "auto", wide }: Pr
         <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" vertical={false} />
         <XAxis
           dataKey="ts"
-          tickFormatter={(t) => fmtClock(t)}
-          minTickGap={40}
+          tickFormatter={(t) => (isMultiDay ? fmtClockWithDate(t) : fmtClock(t))}
+          minTickGap={isMultiDay ? 50 : 40}
           tick={{ fontSize: 11, fill: "#94a3b8" }}
           axisLine={false}
           tickLine={false}
