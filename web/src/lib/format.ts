@@ -54,7 +54,8 @@ export function fmtClock(tsSeconds: number): string {
   return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function fmtClockWithHours(tsSeconds: number): string {
+/** Formats timestamp with short date and time (e.g., "Sep 21, 14:00"). */
+export function fmtClockWithDate(tsSeconds: number): string {
   const dt = new Date(tsSeconds * 1000);
   return dt.toLocaleString([], {
     month: "short",
@@ -63,3 +64,6 @@ export function fmtClockWithHours(tsSeconds: number): string {
     minute: "2-digit",
   });
 }
+
+/** Legacy alias for fmtClockWithDate. */
+export const fmtClockWithHours = fmtClockWithDate;
