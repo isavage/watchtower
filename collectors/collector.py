@@ -12,14 +12,14 @@ import time
 import psutil
 
 from . import hostnet
-from .config import config
+from .hostconfig import host_config
 
-if config.uses_host_proc:
-    psutil.PROCFS_PATH = config.proc_path
+if host_config.uses_host_proc:
+    psutil.PROCFS_PATH = host_config.proc_path
 
 # Root filesystem path: the host bind-mount when present, else our own "/".
-_ROOT = config.host_root or "/"
-if config.host_root and not os.path.isdir(_ROOT):
+_ROOT = host_config.host_root or "/"
+if host_config.host_root and not os.path.isdir(_ROOT):
     _ROOT = "/"
 
 

@@ -13,7 +13,6 @@ def _env(name: str, default: str) -> str:
 @dataclass
 class Config:
     db_path: str = field(default_factory=lambda: _env("WT_DB_PATH", "data/watchtower.db"))
-    host_root: str = field(default_factory=lambda: _env("WT_HOST_ROOT", ""))
     admin_user: str = field(default_factory=lambda: _env("WT_ADMIN_USER", "admin"))
     admin_password: str = field(default_factory=lambda: _env("WT_ADMIN_PASSWORD", "changeme"))
     secret_key: str = field(default_factory=lambda: _env("WT_SECRET_KEY", ""))
@@ -21,6 +20,11 @@ class Config:
     session_days: int = field(default_factory=lambda: int(_env("WT_SESSION_DAYS", "7")))
     cookie_secure: bool = field(default_factory=lambda: _env("WT_COOKIE_SECURE", "auto").lower() in ("1", "true", "yes"))
     docker_socket: str = field(default_factory=lambda: _env("WT_DOCKER_SOCKET", "/var/run/docker.sock"))
+    # When set, host facts come from the watchtower-host-proxy sidecar over
+    # the network instead of local /proc mounts (the Docker deployment has
+    # no host mounts at all). Empty = read this machine directly (dev).
+    host_proxy_url: str = field(default_factory=lambda: _env("WT_HOST_PROXY_URL", ""))
+    host_proxy_token: str = field(default_factory=lambda: _env("WT_HOST_PROXY_TOKEN", ""))
 
     def __post_init__(self) -> None:
         # A missing secret means we are not behind a deliberate config; generate
@@ -30,19 +34,6 @@ class Config:
             self._secret_is_ephemeral = True
         else:
             self._secret_is_ephemeral = False
-
-    @property
-    def proc_path(self) -> str:
-        """Where to read /proc from — the host's when mounted, else our own."""
-        if self.host_root:
-            p = os.path.join(self.host_root, "proc")
-            if os.path.isdir(p):
-                return p
-        return "/proc"
-
-    @property
-    def uses_host_proc(self) -> bool:
-        return self.proc_path != "/proc"
 
 
 config = Config()

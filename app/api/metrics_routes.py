@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .. import auth, details, docker as docker_mod, security, store
+from .. import auth, docker as docker_mod, hostproxy_client, store
+from collectors import details, security
 
 router = APIRouter(prefix="/api", tags=["metrics"], dependencies=[Depends(auth.current_user)])
 
@@ -49,12 +50,22 @@ def details_endpoint(
     limit: int = Query(15, ge=5, le=50, description="Top-N processes per sort"),
 ) -> dict:
     """Live per-core / per-process / per-disk / per-NIC detail."""
+    if hostproxy_client.enabled():
+        data = hostproxy_client.get("/api/details", params={"limit": limit})
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=503, detail="host-proxy unavailable (or endpoint disabled)")
+        return data
     return details.details(limit=limit)
 
 
 @router.get("/security")
 def security_endpoint() -> dict:
     """Read-only firewall, SSH, and listener facts from the host."""
+    if hostproxy_client.enabled():
+        data = hostproxy_client.get("/api/security")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=503, detail="host-proxy unavailable (or WT_ALLOW_SECURITY=0)")
+        return data
     return security.snapshot()
 
 

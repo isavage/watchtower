@@ -5,9 +5,9 @@ import os
 import re, time
 from pathlib import Path
 from . import hostnet
-from .config import config
-ROOT = Path(config.host_root or "/")
-def _host(path: str) -> Path: return ROOT / path.lstrip("/") if config.host_root else Path(path)
+from .hostconfig import host_config
+ROOT = Path(host_config.host_root or "/")
+def _host(path: str) -> Path: return ROOT / path.lstrip("/") if host_config.host_root else Path(path)
 def _tail(names: list[str], limit: int = 80) -> list[str]:
     for name in names:
         try:
@@ -130,19 +130,27 @@ def _ssh_config() -> tuple[list[str], str | None]:
         effective.append(f"{prefix}{s}  [{lbl}]")
     return effective + ignored, None
 def _sshd_process() -> str | None:
-    """cmdline of a running sshd, found via the shared host PID namespace."""
-    try: pids = [p for p in os.listdir(config.proc_path) if p.isdigit()]
+    """Presence of a running sshd, via the shared host PID namespace.
+
+    Deliberately reads only /proc/<pid>/comm — never cmdline or environ: with
+    `pid: host` those can expose other users' secrets (argv frequently carries
+    tokens/passwords) and none of it is needed to answer "is sshd running?".
+    """
+    try: pids = [p for p in os.listdir(host_config.proc_path) if p.isdigit()]
     except OSError: return None
     for pid in pids:
         try:
-            with open(os.path.join(config.proc_path, pid, "comm")) as fh:
-                if fh.read().strip() != "sshd": continue
-            with open(os.path.join(config.proc_path, pid, "cmdline"), "rb") as fh:
-                cmd = fh.read().replace(b"\x00", b" ").decode(errors="replace").strip()
-            return cmd or "sshd"
+            with open(os.path.join(host_config.proc_path, pid, "comm")) as fh:
+                if fh.read().strip() == "sshd": return "sshd"
         except OSError: continue
     return None
 def snapshot() -> dict:
     ufw, ufwe = _ufw_status(); ipt, ipte = _file("/etc/ufw/user.rules"); nft, nfte = _file("/etc/nftables.conf"); sockets, socketse = _parse_proc_net_listeners(); auth=_tail(["/var/log/auth.log","/var/log/secure"])
     ssh, ssh_err = _ssh_config(); sshd_proc = _sshd_process()
-    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"auth_log":auth,"config":ssh,"config_error":ssh_err,"process":sshd_proc},"listeners":{"lines":sockets[:100],"error":socketse},"signals":{"failed_auth":_matches(auth,r"failed password|authentication failure|invalid user"),"accepted_auth":_matches(auth,r"accepted (password|publickey)")}}
+    # Derived JSON only: the raw log tail and even the matched lines (which
+    # carry usernames/IPs) stay inside this function — the UI renders counts,
+    # so counts are all that leave the process. A stolen UI session must not
+    # be able to read auth.log.
+    failed = _matches(auth, r"failed password|authentication failure|invalid user")
+    accepted = _matches(auth, r"accepted (password|publickey)")
+    return {"collected_at":time.time(),"read_only":True,"firewall":{"ufw":{"output":ufw,"error":ufwe},"iptables":{"rules":ipt.splitlines()[:80],"error":ipte},"nftables":{"rules":nft.splitlines()[:80],"error":nfte}},"ssh":{"config":ssh,"config_error":ssh_err,"process":sshd_proc},"listeners":{"lines":sockets[:100],"error":socketse},"signals":{"failed_count":len(failed),"accepted_count":len(accepted)}}

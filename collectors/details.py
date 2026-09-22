@@ -46,7 +46,6 @@ class ProcTracker:
                     mem_info = proc.memory_info()
                     status = proc.status()
                     name = proc.name()
-                    cmdline = " ".join(proc.cmdline()[:6])
                     username = proc.username()
                     create = proc.create_time()
                     num_threads = proc.num_threads()
@@ -73,7 +72,6 @@ class ProcTracker:
                     "threads": num_threads,
                     "started": create,
                     "age": max(now - create, 0.0),
-                    "cmdline": cmdline[:200],
                 }
             )
 
