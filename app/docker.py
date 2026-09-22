@@ -139,6 +139,26 @@ def _age_seconds(created: str | int | float | None) -> float | None:
         return None
 
 
+def _dedupe_ports(ports: list) -> list:
+    """Collapse the IPv4/IPv6 twins the Engine API reports per bind address.
+
+    /containers/json lists a published port once for 0.0.0.0 and once for ::,
+    which rendered as the same badge twice in the UI. The IP field is dropped
+    entirely (we never show it), so dedupe on what we actually display.
+    """
+    seen: set = set()
+    out: list = []
+    for p in ports:
+        if not isinstance(p, dict):
+            continue
+        key = (p.get("PrivatePort"), p.get("PublicPort"), p.get("Type"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({k: v for k, v in p.items() if k != "IP"})
+    return out
+
+
 def images() -> dict:
     if not _socket_present():
         return {"available": False, "images": []}
@@ -177,7 +197,7 @@ def containers() -> dict:
             "id": cid[:12],
             "name": (it.get("Names") or [cid[:12]])[0].lstrip("/"),
             "image": it.get("Image", "?"),
-            "ports": it.get("Ports") or [],
+            "ports": _dedupe_ports(it.get("Ports") or []),
             "state": it.get("State", "unknown"),
             "status": it.get("Status", ""),
             "age": _age_seconds(it.get("Created")),
