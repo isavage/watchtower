@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RangeKey } from "../lib/api";
 import { useDetails, useSeries, useSummary } from "../lib/hooks";
-import { fmtNum, fmtPct } from "../lib/format";
+import { fmtDuration, fmtNum, fmtPct } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
 import { MetricChart } from "../components/MetricChart";
@@ -125,7 +125,7 @@ export function CpuPage() {
                 <Th className="text-right">CPU</Th>
                 <Th className="text-right">Mem</Th>
                 <Th className="text-right hidden sm:table-cell">Threads</Th>
-                <Th className="hidden lg:table-cell">Command</Th>
+                <Th className="hidden lg:table-cell">Uptime</Th>
               </tr>
             </thead>
             <tbody>
@@ -137,7 +137,7 @@ export function CpuPage() {
                   <Td mono className="text-right font-semibold text-ink-900">{p.cpu_pct.toFixed(1)}%</Td>
                   <Td mono className="text-right">{p.mem_pct.toFixed(1)}%</Td>
                   <Td mono className="text-right hidden sm:table-cell">{p.threads}</Td>
-                  <Td className="hidden max-w-[320px] truncate text-ink-400 lg:table-cell">{p.cmdline || "—"}</Td>
+                  <Td className="hidden lg:table-cell text-ink-400">{fmtDuration(p.age)}</Td>
                 </tr>
               ))}
             </tbody>

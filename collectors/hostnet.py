@@ -15,7 +15,7 @@ import ipaddress
 import os
 import time
 
-from .config import config
+from .hostconfig import host_config
 
 _ADDR_TTL = 15.0
 _addr_cache: tuple[float, list[dict]] | None = None
@@ -23,7 +23,7 @@ _addr_cache: tuple[float, list[dict]] | None = None
 
 def host_mode() -> bool:
     """True when we are reading the host's /proc (Docker deployment)."""
-    return config.uses_host_proc
+    return host_config.uses_host_proc
 
 
 def _proc(*parts: str) -> str:
@@ -32,13 +32,13 @@ def _proc(*parts: str) -> str:
     # inside the container is still the container's own view. PID 1 is the
     # host's init (pid: host), so /host/proc/1/net/* genuinely reaches the
     # host network namespace.
-    if config.uses_host_proc and parts and parts[0] == "net":
-        return os.path.join(config.proc_path, "1", "net", *parts[1:])
-    return os.path.join(config.proc_path, *parts)
+    if host_config.uses_host_proc and parts and parts[0] == "net":
+        return os.path.join(host_config.proc_path, "1", "net", *parts[1:])
+    return os.path.join(host_config.proc_path, *parts)
 
 
 def _sys(*parts: str) -> str:
-    root = config.proc_path[: -len("/proc")] if config.uses_host_proc else ""
+    root = host_config.proc_path[: -len("/proc")] if host_config.uses_host_proc else ""
     return os.path.join(root, "sys", *parts)
 
 
@@ -48,10 +48,10 @@ def host_mounts() -> list[tuple[str, str, str]] | None:
     GOTCHA: /proc/mounts is a symlink to /proc/self/mounts (reader's
     namespace), so PID 1's mounts must be read directly, like the net files.
     """
-    if not config.uses_host_proc:
+    if not host_config.uses_host_proc:
         return None
     try:
-        with open(os.path.join(config.proc_path, "1", "mounts")) as fh:
+        with open(os.path.join(host_config.proc_path, "1", "mounts")) as fh:
             text = fh.read()
     except OSError:
         return None

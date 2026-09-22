@@ -11,8 +11,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import store
+from . import docker as docker_mod
 from .api import auth_routes, metrics_routes
 from .config import config
+from . import hostproxy_client
 from .sampler import run_sampler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -27,8 +29,10 @@ async def lifespan(app: FastAPI):
     stop = asyncio.Event()
     task = asyncio.create_task(run_sampler(stop))
     log.info(
-        "watchtower started (interval=%ss, host_proc=%s, db=%s)",
-        config.sample_interval, config.proc_path, config.db_path,
+        "watchtower started (interval=%ss, host_source=%s, db=%s)",
+        config.sample_interval,
+        config.host_proxy_url or "local /proc",
+        config.db_path,
     )
     try:
         yield
@@ -44,7 +48,23 @@ app.include_router(metrics_routes.router)
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True}
+    """Liveness for the app *and* its sidecars.
+
+    When host-proxy or docker-proxy is down, the dashboard would otherwise
+    keep serving 200s full of empty/stale host stats. Reporting them here
+    lets the compose healthcheck (and any monitor) go red instead. Login
+    keeps working either way — only the data planes are gated.
+    """
+    checks = {
+        "host_proxy": hostproxy_client.healthy(),
+        # In local dev the docker socket may simply not exist and the Docker
+        # pages degrade gracefully; only a down docker-proxy sidecar (tcp) is
+        # a real outage worth marking the container unhealthy for.
+        "docker": docker_mod.healthy() if config.docker_socket.startswith("tcp://") else True,
+    }
+    ok = all(checks.values())
+    body = {"ok": ok, "checks": checks}
+    return JSONResponse(body, status_code=200 if ok else 503)
 
 
 # ---- static SPA (built React app) ----

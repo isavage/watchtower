@@ -1,8 +1,73 @@
 services:
+  # ---------------------------------------------------------------------
+  # UI/API app: NO host access at all. No `pid: host`, no /proc or /etc
+  # mounts, no Docker socket. Everything host-related is queried from the
+  # sidecars below over internal networks 
+  # ---------------------------------------------------------------------
   watchtower:
     build: .
     image: watchtower:latest
     container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - watchtower-data:/data
+    depends_on:
+      - docker-proxy
+      - host-proxy
+    expose:
+      - "8080"
+    networks:
+      - watchtower.net
+      - host-proxy.net
+      - docker-proxy.net
+    # The image sets USER appuser; pinning it here too means an accidental
+    # image rebuild as root still can't run PID 1 as root.
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # Fails when a sidecar is down so we never serve empty host stats behind
+      # a healthy-looking 200 (app's /api/health probes both planes).
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    environment:
+      WT_DB_PATH: /data/watchtower.db
+      # Values come from Doppler (injected via `doppler run` on the VPS) or a
+      # local .env file. Required vars fail fast instead of falling back to
+      # insecure dev defaults.
+      WT_ADMIN_USER: ${WT_ADMIN_USER:-admin}
+      WT_ADMIN_PASSWORD: ${WT_ADMIN_PASSWORD:?WT_ADMIN_PASSWORD not set (check Doppler)}
+      WT_SECRET_KEY: ${WT_SECRET_KEY:?WT_SECRET_KEY not set (check Doppler)}
+      WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
+      WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
+      WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
+      WT_DOCKER_SOCKET: tcp://docker-proxy:2375
+      # Host facts arrive over HTTP from the host-proxy sidecar. The shared
+      # bearer token must match the one the proxy serves (fail-closed there).
+      WT_HOST_PROXY_URL: http://host-proxy:8090
+      WT_HOST_PROXY_TOKEN: ${WT_HOST_PROXY_TOKEN:?WT_HOST_PROXY_TOKEN not set (check Doppler)}
+
+  # ---------------------------------------------------------------------
+  # host-proxy: the ONLY container with host visibility. Read-only JSON API
+  # (GET only), one bearer token, per-endpoint allow/deny flags in the
+  # tecnativa docker-socket-proxy style. It owns the narrow host reads the
+  # app used to do directly, so a compromised UI container can at most make
+  # allow-listed, token-gated GETs — never touch /proc, /etc or the socket.
+  # ---------------------------------------------------------------------
+  host-proxy:
+    build:
+      context: .
+      dockerfile: hostproxy/Dockerfile
+    image: watchtower-host-proxy:latest
+    container_name: watchtower-host-proxy
     restart: unless-stopped
     # Read the HOST's metrics, not the container's own.
     pid: host
@@ -14,6 +79,8 @@ services:
       # /host/proc/1/mounts. To measure an ADDITIONAL data disk, expose just
       # that one path — never mount the whole host root:
       # - /data:/host/mnt/data:ro
+      # Security-page files: only needed while WT_ALLOW_SECURITY=1; drop these
+      # mounts too if you deny the endpoint — then the files are unreachable.
       - /etc/ufw/ufw.conf:/host/etc/ufw/ufw.conf:ro
       - /etc/default/ufw:/host/etc/default/ufw:ro
       - /etc/ufw/user.rules:/host/etc/ufw/user.rules:ro
@@ -22,35 +89,47 @@ services:
       - /etc/ssh:/host/etc/ssh:ro
       - /var/log/auth.log:/host/var/log/auth.log:ro
       - /var/log/secure:/host/var/log/secure:ro
-      - watchtower-data:/data
-    depends_on:
-      - docker-socket-proxy
-    # No host port binding: the app is reached only through the reverse proxy
-    # container over the shared network (see `networks` below).
-    expose:
-      - "8080"
+    # Least privilege for the privileged corner: no capabilities (host /proc
+    # reads need none through the shared pid namespace), read-only rootfs,
+    # no writes anywhere, no privilege escalation.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # /api/health is token-free and returns no host data.
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    # Not host-published, and on an internal-only network: containers on
+    # watchtower.net (like a reverse proxy) cannot reach it — only the app can.
     networks:
-      - watchtower.net
+      - host-proxy.net
+    expose:
+      - "8090"
     environment:
-      WT_DB_PATH: /data/watchtower.db
       WT_HOST_ROOT: /host
-      # Values come from Doppler (injected via `doppler run` on the VPS) or a
-      # local .env file. Required vars fail fast instead of falling back to
-      # insecure dev defaults.
-      WT_ADMIN_USER: ${WT_ADMIN_USER:-admin}
-      WT_ADMIN_PASSWORD: ${WT_ADMIN_PASSWORD:?WT_ADMIN_PASSWORD not set (check Doppler)}
-      WT_SECRET_KEY: ${WT_SECRET_KEY:?WT_SECRET_KEY not set (check Doppler)}
-      WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
-      WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
-      WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
-      WT_DOCKER_SOCKET: tcp://docker-socket-proxy:2375
-    # Host /proc reads use the existing pid namespace; no ptrace capability is needed.
+      # Bearer token every data request must carry (endpoints 503 if unset).
+      WT_HOST_PROXY_TOKEN: ${WT_HOST_PROXY_TOKEN:?WT_HOST_PROXY_TOKEN not set (check Doppler)}
+      # ---- allow/deny policy: one flag per endpoint, like socket-proxy ----
+      # Dashboard metric rows (Collector.sample)
+      WT_ALLOW_METRICS: ${WT_ALLOW_METRICS:-1}
+      # Drill-down pages: per-core CPU, processes, partitions, disk I/O, NICs
+      WT_ALLOW_DETAILS: ${WT_ALLOW_DETAILS:-1}
+      # Security page: /etc + auth.log facts. Set 0 (and remove the /etc and
+      # /var/log mounts above) to deny file-based visibility entirely.
+      WT_ALLOW_SECURITY: ${WT_ALLOW_SECURITY:-1}
 
   # Read-only gateway to the Docker Engine socket; only the endpoints the app
   # actually calls are enabled, everything destructive stays denied.
-  docker-socket-proxy:
+  docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
-    container_name: watchtower-docker-socket-proxy
+    container_name: watchtower-docker-proxy
     restart: unless-stopped
     environment:
       CONTAINERS: 1
@@ -78,11 +157,28 @@ services:
       CONFIGS: 0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # Not host-published: reachable only from watchtower.net
+    # Same hardening as the other two: it only needs to read one mounted
+    # socket, so no capabilities, no writes, no privilege escalation.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      # The tecnativa image is HAProxy, which insists on writing its pidfile
+      # (/run/haproxy.pid) and server-state file (/var/lib/haproxy) at
+      # startup — without these tmpfs mounts it exits with
+      # "Cannot create pidfile" under read_only. RAM-only, nothing persists.
+      - /run
+      - /var/lib/haproxy
+    # Not host-published, and on an internal-only network shared with nothing
+    # but the app: containers on watchtower.net (reverse proxy, debug sidecars)
+    # cannot reach :2375 — it is unauthenticated root-equivalent API.
     expose:
       - "2375"
     networks:
-      - watchtower.net
+      - docker-proxy.net
 
 volumes:
   watchtower-data:
@@ -91,3 +187,15 @@ networks:
   watchtower.net:
     name: watchtower.net
     driver: bridge
+  # `internal: true` => no route to the internet from this network at all;
+  # it exists only between the app container and the host-proxy.
+  host-proxy.net:
+    name: host-proxy.net
+    driver: bridge
+    internal: true
+  # Same idea for the Docker API: docker-proxy speaks unauthenticated HTTP on
+  # :2375, so it lives on its own internal net with exactly one neighbour.
+  docker-proxy.net:
+    name: docker-proxy.net
+    driver: bridge
+    internal: true
