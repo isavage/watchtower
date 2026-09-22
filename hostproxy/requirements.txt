@@ -1,0 +1,4 @@
+# Minimal runtime for the host-proxy: no auth, no DB, no web UI deps.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+psutil==6.1.1

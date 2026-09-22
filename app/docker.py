@@ -80,6 +80,11 @@ def _socket_present() -> bool:
         return False
 
 
+def healthy() -> bool:
+    """Reachable Docker API (socket or docker-proxy)? Used by /api/health."""
+    return _socket_present()
+
+
 def _cpu_percent(stats: dict) -> float:
     cur = stats.get("cpu_stats") or {}
     prev = stats.get("precpu_stats") or {}

@@ -5,9 +5,10 @@ import asyncio
 import logging
 import time
 
-from .collector import Collector
+from . import hostproxy_client
 from .config import config
 from . import store
+from collectors.collector import Collector
 
 log = logging.getLogger("watchtower.sampler")
 
@@ -16,7 +17,10 @@ RETENTION_SECONDS = 7 * 24 * 3600
 
 
 async def run_sampler(stop: asyncio.Event) -> None:
-    collector = Collector()
+    # In Docker the app container has no host access: samples are fetched
+    # from the host-proxy sidecar. Locally (no WT_HOST_PROXY_URL) we read
+    # /proc ourselves.
+    collector = hostproxy_client.RemoteCollector() if hostproxy_client.enabled() else Collector()
     batch: list[dict] = []
     last_flush = 0.0
     last_prune = 0.0

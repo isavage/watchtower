@@ -37,7 +37,6 @@ export interface ProcRow {
   threads: number;
   started: number;
   age: number;
-  cmdline: string;
 }
 
 export interface CoreRow {
