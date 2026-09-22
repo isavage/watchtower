@@ -166,6 +166,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      # The tecnativa image is HAProxy, which insists on writing its pidfile
+      # (/run/haproxy.pid) and server-state file (/var/lib/haproxy) at
+      # startup — without these tmpfs mounts it exits with
+      # "Cannot create pidfile" under read_only. RAM-only, nothing persists.
+      - /run
+      - /var/lib/haproxy
     # Not host-published, and on an internal-only network shared with nothing
     # but the app: containers on watchtower.net (reverse proxy, debug sidecars)
     # cannot reach :2375 — it is unauthenticated root-equivalent API.
