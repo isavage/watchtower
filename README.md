@@ -165,12 +165,13 @@ Pushes to `main`/`master` deploy to the VPS via
 
 **1. Doppler** — create a project and add these config variables:
 
-| Doppler var         | Example                        |
-| ------------------- | ------------------------------ |
-| `WT_ADMIN_USER`     | `admin`                        |
-| `WT_ADMIN_PASSWORD` | strong password                |
-| `WT_SECRET_KEY`     | `openssl rand -hex 32` output  |
-| `WT_COOKIE_SECURE`  | `true` behind TLS, else `false`|
+| Doppler var           | Example                        |
+| --------------------- | ------------------------------ |
+| `WT_ADMIN_USER`       | `admin`                        |
+| `WT_ADMIN_PASSWORD`   | strong password                |
+| `WT_SECRET_KEY`       | `openssl rand -hex 32` output  |
+| `WT_HOST_PROXY_TOKEN` | `openssl rand -hex 32` output  |
+| `WT_COOKIE_SECURE`    | `true` behind TLS, else `false`|
 
 Copy a **Service Token** (`dp.st.…`) for your production config.
 
@@ -211,7 +212,9 @@ cd web && npm run build && cd ..
 uvicorn app.main:app --port 8080                      # http://localhost:8080
 ```
 
-Default dev login: `admin` / `demo1234` (set via env, never in production).
+Dev login is whatever you set via `WT_ADMIN_USER` / `WT_ADMIN_PASSWORD`
+(the built-in fallback is `admin` / `changeme` — never rely on defaults in
+production).
 
 ## Configuration (env vars)
 
@@ -224,7 +227,7 @@ Default dev login: `admin` / `demo1234` (set via env, never in production).
 | `WT_HOST_ROOT`       | *(empty)*              | Host mount root, `/host` in Docker        |
 | `WT_SAMPLE_INTERVAL` | `2`                    | Seconds between samples                   |
 | `WT_SESSION_DAYS`    | `7`                    | Session sliding-expiry window             |
-| `WT_COOKIE_SECURE`   | `false`                | Enable when served over HTTPS             |
+| `WT_COOKIE_SECURE`   | `auto`                 | `true` when served over HTTPS (`auto` behaves as false) |
 | `WT_DOCKER_SOCKET`   | `/var/run/docker.sock` | Docker Engine API: socket path or `tcp://host:port` (the compose stack points this at docker-socket-proxy) |
 | `WT_HOST_PROXY_URL`  | *(empty)*              | host-proxy base URL; empty = read local `/proc` directly (dev). The compose stack points this at `http://host-proxy:8090` |
 | `WT_HOST_PROXY_TOKEN`| *(empty)*              | Bearer token shared by the app and host-proxy (generate like `WT_SECRET_KEY`) |
