@@ -200,13 +200,19 @@ def networks() -> dict:
     items = _get("/networks")
     if not isinstance(items, list):
         return {"available": False, "networks": []}
+    # GOTCHA: GET /networks is the summary endpoint — unlike /networks/{id}
+    # inspect it does NOT include a Containers map. Attachments are joined
+    # from the container list instead, whose NetworkSettings.Networks is
+    # keyed by network *name*.
+    attached: dict[str, list[str]] = {}
+    for c in _all_containers():
+        for net in (c.get("NetworkSettings") or {}).get("Networks") or {}:
+            attached.setdefault(net, []).append(_container_name(c))
     rows = []
     for item in items:
         ipam = item.get("IPAM") or {}
-        # The /networks list already embeds the attached-container map
-        # ({id: {Name, ...}}) — no extra fetch needed, unlike images/volumes.
-        attached = sorted((c.get("Name") or "").lstrip("/") for c in (item.get("Containers") or {}).values())
-        rows.append({"id": str(item.get("Id", ""))[:12], "name": item.get("Name", ""), "driver": item.get("Driver", ""), "scope": item.get("Scope", ""), "internal": bool(item.get("Internal")), "subnets": [c.get("Subnet") for c in (ipam.get("Config") or []) if c.get("Subnet")], "gateways": [c.get("Gateway") for c in (ipam.get("Config") or []) if c.get("Gateway")], "containers": len(item.get("Containers") or {}), "used_by": attached})
+        users = sorted(attached.get(item.get("Name", ""), []))
+        rows.append({"id": str(item.get("Id", ""))[:12], "name": item.get("Name", ""), "driver": item.get("Driver", ""), "scope": item.get("Scope", ""), "internal": bool(item.get("Internal")), "subnets": [c.get("Subnet") for c in (ipam.get("Config") or []) if c.get("Subnet")], "gateways": [c.get("Gateway") for c in (ipam.get("Config") or []) if c.get("Gateway")], "containers": len(users), "used_by": users})
     return {"available": True, "networks": rows}
 
 
@@ -250,7 +256,11 @@ def volumes() -> dict:
             "used_by": sorted(users.get(v.get("Name", ""), [])),
         })
     rows.sort(key=lambda r: (-(r["size"] or 0), r["name"]))
-    return {"available": True, "count": len(rows), "size_total": total_bytes, "volumes": rows}
+    # Daemons older than Engine 23.0 (API 1.42) silently ignore ?size=1 and
+    # omit UsageData entirely — tell the UI so it can explain the dashes
+    # instead of looking broken.
+    usage_available = any(isinstance((v.get("UsageData") or {}).get("Size"), (int, float)) for v in vols)
+    return {"available": True, "count": len(rows), "size_total": total_bytes, "usage_available": usage_available, "volumes": rows}
 
 
 def containers() -> dict:
