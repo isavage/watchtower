@@ -136,6 +136,7 @@ services:
       STATS: 1
       IMAGES: 1
       NETWORKS: 1
+      VOLUMES: 1
       # Explicitly off (proxy defaults are also deny):
       EXEC: 0
       CREATE: 0
@@ -145,7 +146,6 @@ services:
       DELETE: 0
       BUILDS: 0
       PUSH: 0
-      VOLUMES: 0
       SWARM: 0
       SECRETS: 0
       SERVICES: 0

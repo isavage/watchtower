@@ -63,7 +63,7 @@ same problems:
 | Need | Common approach | Watchtower |
 | --- | --- | --- |
 | Host metrics | `privileged: true` or running an agent directly on the host | A dedicated **host-proxy** container holds `pid: host` + `/proc` and `/sys` mounted **read-only** and serves one allow-listed JSON API over an internal-only network; the web app itself has no host mounts, no `pid: host`, `cap_drop: ALL`, read-only rootfs, and runs as a **non-root user** |
-| Docker visibility | Mount `/var/run/docker.sock` into the app (root-equivalent on the host) | [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) sidecar allow-listing **four read-only endpoints** (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`); exec, kill, create, delete are denied at the proxy, the raw socket never touches the app container, and the proxy sits on its **own internal network** — nothing else (not even the reverse proxy) can reach its unauthenticated `:2375` |
+| Docker visibility | Mount `/var/run/docker.sock` into the app (root-equivalent on the host) | [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) sidecar allow-listing **five read-only endpoints** (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`, `VOLUMES`); exec, kill, create, delete are denied at the proxy, the raw socket never touches the app container, and the proxy sits on its **own internal network** — nothing else (not even the reverse proxy) can reach its unauthenticated `:2375` |
 | Firewall / sshd state | Shell out to `ufw status` / read `/etc/shadow`-adjacent paths with broad mounts | The host-proxy parses exactly **five config files** (`/etc/ufw/*`, `/etc/nftables.conf`, `/etc/ssh`) plus one log (`/var/log/auth.log`), each mounted individually, read-only, and reduces them to **derived JSON** — counts and effective settings, never raw log lines. The whole endpoint can be denied with `WT_ALLOW_SECURITY=0` (drop the mounts too, and the files become unreachable even to the proxy) |
 | Listening sockets | Run `ss`/`netstat` in a privileged sidecar | Read `/proc/1/net/*` directly — host truth, zero execution |
 | Disk partitions | Bind-mount the whole host root "just for statvfs" | Host mount table from `/proc/1/mounts`; the root disk is measured through the container's own filesystem (it lives on it). Extra data disks appear **only** if you opt in by mounting that one path |
@@ -253,6 +253,7 @@ production).
 | `/api/docker`           | GET    | Docker containers with live CPU/mem/net/blkio (`available: false` without the socket) |
 | `/api/docker/images`    | GET    | Docker images                        |
 | `/api/docker/networks`  | GET    | Docker networks                      |
+| `/api/docker/volumes`   | GET    | Docker volumes with size + which containers mount them |
 | `/api/security`         | GET    | Derived host security snapshot (firewall, listeners, effective sshd, auth counts) |
 | `/api/series?range=1h`  | GET    | Downsampled series for the range     |
 | `/api/health`           | GET    | Liveness — also reports host-proxy / docker-proxy reachability (503 when a sidecar is down) |
@@ -340,8 +341,8 @@ Either way, every page reports the **server**, not the watchtower container:
   API, so it shows per-container usage (which includes watchtower itself).
   The raw socket is **not** mounted into the app container; a
   [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
-  sidecar exposes only the four read-only endpoints the pages use
-  (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`), so a compromised app cannot
+  sidecar exposes only the five read-only endpoints the pages use
+  (`CONTAINERS`, `STATS`, `IMAGES`, `NETWORKS`, `VOLUMES`), so a compromised app cannot
   exec into, kill, or reconfigure other containers.
 
 If your reverse proxy terminates TLS, forward the original scheme and set
