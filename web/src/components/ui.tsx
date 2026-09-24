@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode } from "react";
 
 /** Thin horizontal usage meter with a label row. */
 export function UsageBar({
@@ -56,12 +56,71 @@ export function TableCard({
   );
 }
 
-export function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
+export type SortDirection = "asc" | "desc" | null;
+
+export function SortIcon({ direction }: { direction: SortDirection }) {
+  if (direction === "asc") {
+    return (
+      <svg className="inline-block h-3 w-3 shrink-0 text-ink-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 15l-6-6-6 6" />
+      </svg>
+    );
+  }
+  if (direction === "desc") {
+    return (
+      <svg className="inline-block h-3 w-3 shrink-0 text-ink-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="inline-block h-3 w-3 shrink-0 text-ink-300 opacity-40 group-hover:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 15l5 5 5-5" />
+      <path d="M7 9l5-5 5 5" />
+    </svg>
+  );
+}
+
+export function Th({
+  children,
+  className = "",
+  sortKey,
+  currentSortKey,
+  sortDirection,
+  onSort,
+}: {
+  children?: ReactNode;
+  className?: string;
+  sortKey?: string;
+  currentSortKey?: string | null;
+  sortDirection?: SortDirection;
+  onSort?: (key: string) => void;
+}) {
+  if (!sortKey || !onSort) {
+    return (
+      <th
+        className={`whitespace-nowrap px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-ink-400 ${className}`}
+      >
+        {children}
+      </th>
+    );
+  }
+
+  const isSorted = currentSortKey === sortKey;
+  const dir = isSorted ? sortDirection ?? null : null;
+  const isRight = className.includes("text-right");
+
   return (
     <th
-      className={`whitespace-nowrap px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-ink-400 ${className}`}
+      onClick={() => onSort(sortKey)}
+      className={`group cursor-pointer select-none whitespace-nowrap px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide transition-colors hover:text-ink-800 ${
+        isSorted ? "text-ink-900 font-semibold" : "text-ink-400"
+      } ${className}`}
     >
-      {children}
+      <span className={`inline-flex items-center gap-1 ${isRight ? "justify-end w-full" : ""}`}>
+        {children}
+        <SortIcon direction={dir} />
+      </span>
     </th>
   );
 }
