@@ -13,6 +13,42 @@ function PortBadges({ ports }: { ports: { PublicPort?: number; PrivatePort: numb
     </span>;
   })}</div>;
 }
+
+function getStatusTone(state?: string, status?: string): { badge: string; dot: string } {
+  const s = (status || "").toLowerCase();
+  const st = (state || "").toLowerCase();
+
+  // Unhealthy or dead containers should be clearly flagged red/rose
+  if (s.includes("unhealthy") || st === "dead") {
+    return {
+      badge: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+      dot: "bg-rose-500",
+    };
+  }
+
+  // Health starting, restarting, or paused containers
+  if (s.includes("health: starting") || st === "restarting" || st === "paused") {
+    return {
+      badge: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+      dot: "bg-amber-500",
+    };
+  }
+
+  // Healthy or cleanly running containers
+  if (st === "running" || s.includes("healthy") || s.startsWith("up")) {
+    return {
+      badge: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+      dot: "bg-emerald-500",
+    };
+  }
+
+  // Exited, created, or other non-running states
+  return {
+    badge: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+    dot: "bg-amber-500",
+  };
+}
+
 export function DockerPage() {
   const { data, error } = useDocker();
   const { latest } = useSummary();
@@ -54,8 +90,7 @@ export function DockerPage() {
             <path d="M3 3l18 18" />
           </svg>
           <p className="text-sm font-medium text-ink-700">Docker socket not available</p>
-          <p className="max-w-md text-xs text-ink-400">
-            Mount <code className="rounded bg-ink-100 px-1 py-0.5 font-mono">/var/run/docker.sock</code> into
+          <p className="max-w-md text-xs text-ink-400">            Mount <code className="rounded bg-ink-100 px-1 py-0.5 font-mono">/var/run/docker.sock</code> into
             the watchtower container (already present in docker-compose.yml) and redeploy.
           </p>
         </div>
@@ -72,8 +107,7 @@ export function DockerPage() {
             <StatTile label="Host uptime" value={fmtUptime(latest?.uptime)} />
           </div>
 
-          <TableCard title="Containers" subtitle={`sorted by CPU · ${rows.length} shown`}>
-            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span></div>
+          <TableCard title="Containers" subtitle={`sorted by CPU · ${rows.length} shown`}>            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span></div>
             <table className="w-full">
               <thead>
                 <tr>
@@ -88,45 +122,46 @@ export function DockerPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => (
-                  <tr key={c.id} className="border-t border-ink-100 align-middle">
-                    <Td>
-                      <div className="font-medium text-ink-900">{c.name}</div>
-                      <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
-                    </Td>
-                    <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
-                    <Td>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          c.state === "running" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${c.state === "running" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                        {c.status || c.state}
-                      </span>
-                    </Td>
-                    <Td>
-                      <UsageBar pct={c.cpu_pct} label="" color="#0ea5e9" right={c.cpu_pct != null ? `${c.cpu_pct.toFixed(1)}%` : "—"} />
-                    </Td>
-                    <Td>
-                      <UsageBar
-                        pct={c.mem_pct}
-                        label=""
-                        color="#8b5cf6"
-                        right={c.mem_usage != null ? `${fmtBytes(c.mem_usage)}${c.mem_pct != null ? ` · ${c.mem_pct.toFixed(0)}%` : ""}` : "—"}
-                      />
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 md:table-cell">
-                      {c.net_rx != null ? `${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx ?? 0)}` : "—"}
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 lg:table-cell">
-                      {c.blkio != null ? fmtBytes(c.blkio) : "—"}
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 sm:table-cell">
-                      {c.age != null ? fmtDuration(c.age) : "—"}
-                    </Td>
-                  </tr>
-                ))}
+                {rows.map((c) => {
+                  const tone = getStatusTone(c.state, c.status);
+                  return (
+                    <tr key={c.id} className="border-t border-ink-100 align-middle">
+                      <Td>
+                        <div className="font-medium text-ink-900">{c.name}</div>
+                        <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
+                      </Td>
+                      <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
+                      <Td>
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone.badge}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                          {c.status || c.state}
+                        </span>
+                      </Td>
+                      <Td>
+                        <UsageBar pct={c.cpu_pct} label="" color="#0ea5e9" right={c.cpu_pct != null ? `${c.cpu_pct.toFixed(1)}%` : "—"} />
+                      </Td>
+                      <Td>
+                        <UsageBar
+                          pct={c.mem_pct}
+                          label=""
+                          color="#8b5cf6"
+                          right={c.mem_usage != null ? `${fmtBytes(c.mem_usage)}${c.mem_pct != null ? ` · ${c.mem_pct.toFixed(0)}%` : ""}` : "—"}
+                        />
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 md:table-cell">
+                        {c.net_rx != null ? `${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx ?? 0)}` : "—"}
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 lg:table-cell">
+                        {c.blkio != null ? fmtBytes(c.blkio) : "—"}
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 sm:table-cell">
+                        {c.age != null ? fmtDuration(c.age) : "—"}
+                      </Td>
+                    </tr>
+                  );
+                })}
                 {rows.length === 0 && (
                   <tr>
                     <Td className="text-ink-400">No containers match.</Td>
