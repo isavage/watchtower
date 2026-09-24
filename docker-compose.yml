@@ -12,14 +12,14 @@ services:
     volumes:
       - watchtower-data:/data
     depends_on:
-      - docker-proxy
-      - host-proxy
+      - watchtower.docker.proxy
+      - watchtower.host.proxy
     expose:
       - "8080"
     networks:
       - watchtower.net
-      - host.proxy.net
-      - docker.proxy.net
+      - watchtower.host.proxy.net
+      - watchtower.docker.proxy.net
     # The image sets USER appuser; pinning it here too means an accidental
     # image rebuild as root still can't run PID 1 as root.
     user: "10001:10001"
@@ -49,10 +49,10 @@ services:
       WT_COOKIE_SECURE: ${WT_COOKIE_SECURE:-false}
       WT_SAMPLE_INTERVAL: ${WT_SAMPLE_INTERVAL:-2}
       WT_SESSION_DAYS: ${WT_SESSION_DAYS:-7}
-      WT_DOCKER_SOCKET: tcp://docker-proxy:2375
+      WT_DOCKER_SOCKET: tcp://watchtower.docker.proxy:2375
       # Host facts arrive over HTTP from the host-proxy sidecar. The shared
       # bearer token must match the one the proxy serves (fail-closed there).
-      WT_HOST_PROXY_URL: http://host-proxy:8090
+      WT_HOST_PROXY_URL: http://watchtower.host.proxy:8090
       WT_HOST_PROXY_TOKEN: ${WT_HOST_PROXY_TOKEN:?WT_HOST_PROXY_TOKEN not set (check Doppler)}
 
   # ---------------------------------------------------------------------
@@ -62,12 +62,12 @@ services:
   # app used to do directly, so a compromised UI container can at most make
   # allow-listed, token-gated GETs — never touch /proc, /etc or the socket.
   # ---------------------------------------------------------------------
-  host-proxy:
+  watchtower.host.proxy:
     build:
       context: .
       dockerfile: hostproxy/Dockerfile
-    image: watchtower-host-proxy:latest
-    container_name: watchtower-host-proxy
+    image: watchtower.host.proxy:latest
+    container_name: watchtower.host.proxy
     restart: unless-stopped
     # Read the HOST's metrics, not the container's own.
     pid: host
@@ -109,7 +109,7 @@ services:
     # Not host-published, and on an internal-only network: containers on
     # watchtower.net (like a reverse proxy) cannot reach it — only the app can.
     networks:
-      - host.proxy.net
+      - watchtower.host.proxy.net
     expose:
       - "8090"
     environment:
@@ -127,9 +127,9 @@ services:
 
   # Read-only gateway to the Docker Engine socket; only the endpoints the app
   # actually calls are enabled, everything destructive stays denied.
-  docker-proxy:
+  watchtower.docker.proxy:
     image: tecnativa/docker-socket-proxy:latest
-    container_name: watchtower-docker-proxy
+    container_name: watchtower.docker.proxy
     restart: unless-stopped
     environment:
       CONTAINERS: 1
@@ -178,7 +178,7 @@ services:
     expose:
       - "2375"
     networks:
-      - docker.proxy.net
+      - watchtower.docker.proxy.net
 
 volumes:
   watchtower-data:
@@ -189,13 +189,13 @@ networks:
     driver: bridge
   # `internal: true` => no route to the internet from this network at all;
   # it exists only between the app container and the host-proxy.
-  host.proxy.net:
-    name: host.proxy.net
+  watchtower.host.proxy.net:
+    name: watchtower.host.proxy.net
     driver: bridge
     internal: true
   # Same idea for the Docker API: docker-proxy speaks unauthenticated HTTP on
   # :2375, so it lives on its own internal net with exactly one neighbour.
-  docker.proxy.net:
-    name: docker.proxy.net
+  watchtower.docker.proxy.net:
+    name: watchtower.docker.proxy.net
     driver: bridge
     internal: true
