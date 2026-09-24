@@ -18,8 +18,8 @@ services:
       - "8080"
     networks:
       - watchtower.net
-      - host-proxy.net
-      - docker-proxy.net
+      - host.proxy.net
+      - docker.proxy.net
     # The image sets USER appuser; pinning it here too means an accidental
     # image rebuild as root still can't run PID 1 as root.
     user: "10001:10001"
@@ -109,7 +109,7 @@ services:
     # Not host-published, and on an internal-only network: containers on
     # watchtower.net (like a reverse proxy) cannot reach it — only the app can.
     networks:
-      - host-proxy.net
+      - host.proxy.net
     expose:
       - "8090"
     environment:
@@ -178,7 +178,7 @@ services:
     expose:
       - "2375"
     networks:
-      - docker-proxy.net
+      - docker.proxy.net
 
 volumes:
   watchtower-data:
@@ -189,13 +189,13 @@ networks:
     driver: bridge
   # `internal: true` => no route to the internet from this network at all;
   # it exists only between the app container and the host-proxy.
-  host-proxy.net:
-    name: host-proxy.net
+  host.proxy.net:
+    name: host.proxy.net
     driver: bridge
     internal: true
   # Same idea for the Docker API: docker-proxy speaks unauthenticated HTTP on
   # :2375, so it lives on its own internal net with exactly one neighbour.
-  docker-proxy.net:
-    name: docker-proxy.net
+  docker.proxy.net:
+    name: docker.proxy.net
     driver: bridge
     internal: true
