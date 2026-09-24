@@ -79,7 +79,6 @@ export function DockerPage() {
                 <tr>
                   <Th>Container</Th>
                   <Th className="hidden sm:table-cell">Ports</Th>
-                  <Th className="hidden md:table-cell">Image</Th>
                   <Th>Status</Th>
                   <Th className="w-36">CPU</Th>
                   <Th className="w-36">Memory</Th>
@@ -96,7 +95,6 @@ export function DockerPage() {
                       <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
                     </Td>
                     <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
-                    <Td className="hidden max-w-[180px] truncate text-ink-500 md:table-cell">{c.image}</Td>
                     <Td>
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
