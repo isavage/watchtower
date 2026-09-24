@@ -8,6 +8,7 @@ const DOCKER_NAV = [
   { to: "/docker/containers", label: "Containers" },
   { to: "/docker/images", label: "Images" },
   { to: "/docker/networks", label: "Networks" },
+  { to: "/docker/volumes", label: "Volumes" },
 ];
 
 const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [

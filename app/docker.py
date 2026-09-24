@@ -159,13 +159,39 @@ def _dedupe_ports(ports: list) -> list:
     return out
 
 
+def _all_containers() -> list:
+    """Cheap full container list (no stats) for usage joins.
+
+    all=true so stopped containers count too: they still hold volumes,
+    images and network attachments until they are removed.
+    """
+    ct = _get("/containers/json?all=true&size=0")
+    return ct if isinstance(ct, list) else []
+
+
+def _container_name(c: dict) -> str:
+    return (c.get("Names") or [""])[0].lstrip("/")
+
+
 def images() -> dict:
     if not _socket_present():
         return {"available": False, "images": []}
     items = _get("/images/json")
     if not isinstance(items, list):
         return {"available": False, "images": []}
-    return {"available": True, "images": [{"id": str(i.get("Id", ""))[-12:], "tags": i.get("RepoTags") or [], "size": float(i.get("Size") or 0), "created": i.get("Created")} for i in items]}
+    # Join by full image Id: /containers/json reports ImageID ("sha256:...")
+    # which matches the image's Id exactly — the tag shown on a container is
+    # unreliable (it can be deleted or repointed since the container was made).
+    users: dict[str, list[str]] = {}
+    for c in _all_containers():
+        iid = c.get("ImageID") or ""
+        if iid:
+            users.setdefault(iid, []).append(_container_name(c))
+    out = []
+    for i in items:
+        iid = str(i.get("Id", ""))
+        out.append({"id": iid[-12:], "tags": i.get("RepoTags") or [], "size": float(i.get("Size") or 0), "created": i.get("Created"), "used_by": sorted(users.get(iid, []))})
+    return {"available": True, "images": out}
 
 
 def networks() -> dict:
@@ -174,11 +200,67 @@ def networks() -> dict:
     items = _get("/networks")
     if not isinstance(items, list):
         return {"available": False, "networks": []}
+    # GOTCHA: GET /networks is the summary endpoint — unlike /networks/{id}
+    # inspect it does NOT include a Containers map. Attachments are joined
+    # from the container list instead, whose NetworkSettings.Networks is
+    # keyed by network *name*.
+    attached: dict[str, list[str]] = {}
+    for c in _all_containers():
+        for net in (c.get("NetworkSettings") or {}).get("Networks") or {}:
+            attached.setdefault(net, []).append(_container_name(c))
     rows = []
     for item in items:
         ipam = item.get("IPAM") or {}
-        rows.append({"id": str(item.get("Id", ""))[:12], "name": item.get("Name", ""), "driver": item.get("Driver", ""), "scope": item.get("Scope", ""), "internal": bool(item.get("Internal")), "subnets": [c.get("Subnet") for c in (ipam.get("Config") or []) if c.get("Subnet")], "gateways": [c.get("Gateway") for c in (ipam.get("Config") or []) if c.get("Gateway")], "containers": len(item.get("Containers") or {})})
+        users = sorted(attached.get(item.get("Name", ""), []))
+        rows.append({"id": str(item.get("Id", ""))[:12], "name": item.get("Name", ""), "driver": item.get("Driver", ""), "scope": item.get("Scope", ""), "internal": bool(item.get("Internal")), "subnets": [c.get("Subnet") for c in (ipam.get("Config") or []) if c.get("Subnet")], "gateways": [c.get("Gateway") for c in (ipam.get("Config") or []) if c.get("Gateway")], "containers": len(users), "used_by": users})
     return {"available": True, "networks": rows}
+
+
+def volumes() -> dict:
+    """Named volumes with usage: which containers mount each one.
+
+    /volumes itself has no container mapping, so one extra all=true
+    container list (cheap, no stats) supplies the mount rows. `size=1`
+    asks the daemon for UsageData (API 1.42+); older daemons simply
+    omit it and the UI shows an em dash.
+    """
+    if not _socket_present():
+        return {"available": False, "volumes": []}
+    items = _get("/volumes?size=1")
+    if not isinstance(items, dict):
+        return {"available": False, "volumes": []}
+    vols = items.get("Volumes") or []
+
+    users: dict[str, list[str]] = {}
+    total_bytes = 0.0
+    # all=true so stopped containers still show as users of a volume.
+    for c in _all_containers():
+        name = _container_name(c)
+        for m in c.get("Mounts") or []:
+            if m.get("Type") == "volume" and m.get("Name"):
+                users.setdefault(m["Name"], []).append(name)
+
+    rows = []
+    for v in vols:
+        usage = v.get("UsageData") or {}
+        size = usage.get("Size")
+        if isinstance(size, (int, float)):
+            total_bytes += size
+        rows.append({
+            "name": v.get("Name", ""),
+            "driver": v.get("Driver", ""),
+            "mountpoint": v.get("Mountpoint", ""),
+            "created": v.get("CreatedAt"),
+            "size": float(size) if isinstance(size, (int, float)) else None,
+            "refcount": usage.get("RefCount"),
+            "used_by": sorted(users.get(v.get("Name", ""), [])),
+        })
+    rows.sort(key=lambda r: (-(r["size"] or 0), r["name"]))
+    # Daemons older than Engine 23.0 (API 1.42) silently ignore ?size=1 and
+    # omit UsageData entirely — tell the UI so it can explain the dashes
+    # instead of looking broken.
+    usage_available = any(isinstance((v.get("UsageData") or {}).get("Size"), (int, float)) for v in vols)
+    return {"available": True, "count": len(rows), "size_total": total_bytes, "usage_available": usage_available, "volumes": rows}
 
 
 def containers() -> dict:

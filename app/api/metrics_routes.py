@@ -79,6 +79,11 @@ def docker_networks_endpoint() -> dict:
     return docker_mod.networks()
 
 
+@router.get("/docker/volumes")
+def docker_volumes_endpoint() -> dict:
+    return docker_mod.volumes()
+
+
 @router.get("/docker")
 def docker_endpoint() -> dict:
     """Running containers with live CPU/mem/net/blkio, or available=False."""
