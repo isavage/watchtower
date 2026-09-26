@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { RangeKey } from "../lib/api";
-import { useDetails, useSeries } from "../lib/hooks";
+import { useDetails, useSeries, useSortable } from "../lib/hooks";
 import { fmtBytes, fmtNum, fmtPct, fmtRate } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
@@ -11,6 +11,24 @@ export function DiskPage() {
   const [range, setRange] = useState<RangeKey>("1h");
   const { data: d } = useDetails();
   const { points } = useSeries(range);
+
+  const devices = useMemo(() => d?.disk_io?.devices ?? [], [d]);
+
+  const sortGetters = useMemo(() => ({
+    name: (x: any) => x.name,
+    read_rate: (x: any) => x.read_rate ?? 0,
+    write_rate: (x: any) => x.write_rate ?? 0,
+    ops: (x: any) => x.ops ?? 0,
+    read_total: (x: any) => x.read_total ?? 0,
+    write_total: (x: any) => x.write_total ?? 0,
+  }), []);
+
+  const { items: sortedDevices, sortKey, sortDirection, toggleSort } = useSortable(
+    devices,
+    "name",
+    "asc",
+    sortGetters
+  );
 
   if (!d) return <Layout title="Disk"><LoadingBlock /></Layout>;
 
@@ -79,16 +97,16 @@ export function DiskPage() {
           <table className="w-full">
             <thead>
               <tr>
-                <Th>Device</Th>
-                <Th className="text-right">Read/s</Th>
-                <Th className="text-right">Write/s</Th>
-                <Th className="text-right">IOPS</Th>
-                <Th className="text-right hidden sm:table-cell">Read total</Th>
-                <Th className="text-right hidden sm:table-cell">Write total</Th>
+                <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Device</Th>
+                <Th sortKey="read_rate" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Read/s</Th>
+                <Th sortKey="write_rate" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Write/s</Th>
+                <Th sortKey="ops" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">IOPS</Th>
+                <Th sortKey="read_total" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden sm:table-cell">Read total</Th>
+                <Th sortKey="write_total" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden sm:table-cell">Write total</Th>
               </tr>
             </thead>
             <tbody>
-              {d.disk_io.devices.map((x) => (
+              {sortedDevices.map((x) => (
                 <tr key={x.name} className="border-t border-ink-100">
                   <Td className="font-medium text-ink-900">{x.name}</Td>
                   <Td mono className="text-right">{x.read_rate != null ? fmtRate(x.read_rate) : "—"}</Td>
@@ -98,9 +116,9 @@ export function DiskPage() {
                   <Td mono className="text-right hidden text-ink-500 sm:table-cell">{fmtBytes(x.write_total)}</Td>
                 </tr>
               ))}
-              {d.disk_io.devices.length === 0 && (
+              {sortedDevices.length === 0 && (
                 <tr>
-                  <Td className="text-ink-400" >No disk I/O counters available.</Td>
+                  <Td className="text-ink-400">No disk I/O counters available.</Td>
                 </tr>
               )}
             </tbody>

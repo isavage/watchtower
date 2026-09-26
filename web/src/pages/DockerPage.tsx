@@ -1,17 +1,30 @@
 import { useMemo, useState } from "react";
-import { useDocker, useSummary } from "../lib/hooks";
+import { useDocker, useSortable, useSummary } from "../lib/hooks";
 import { fmtBytes, fmtDuration, fmtNum, fmtUptime } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { LoadingBlock, StatTile, TableCard, Td, Th, UsageBar } from "../components/ui";
 
 function PortBadges({ ports }: { ports: { PublicPort?: number; PrivatePort: number; Type: string }[] }) {
   if (!ports.length) return <span className="text-ink-400">—</span>;
-  return <div className="flex max-w-[220px] flex-wrap gap-1">{ports.map((port, index) => {
-    const host = port.PublicPort != null;
-    return <span key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`} title={host ? "Published host port" : "Container-only exposed port"} className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"}`}>
-      {host ? `${port.PublicPort}:` : ""}{port.PrivatePort}/{port.Type}
-    </span>;
-  })}</div>;
+  return (
+    <div className="flex max-w-[220px] flex-wrap gap-1">
+      {ports.map((port, index) => {
+        const host = port.PublicPort != null;
+        return (
+          <span
+            key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`}
+            title={host ? "Published host port" : "Container-only exposed port"}
+            className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${
+              host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+            }`}
+          >
+            {host ? `${port.PublicPort}:` : ""}
+            {port.PrivatePort}/{port.Type}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function getStatusTone(state?: string, status?: string): { badge: string; dot: string } {
@@ -54,12 +67,33 @@ export function DockerPage() {
   const { latest } = useSummary();
   const [filter, setFilter] = useState("");
 
-  const rows = useMemo(() => {
+  const filtered = useMemo(() => {
     const list = data?.containers ?? [];
     const q = filter.trim().toLowerCase();
     if (!q) return list;
     return list.filter((c) => c.name.toLowerCase().includes(q) || c.image.toLowerCase().includes(q));
   }, [data, filter]);
+
+  const sortGetters = useMemo(
+    () => ({
+      name: (c: any) => c.name,
+      ports: (c: any) => c.ports?.[0]?.PublicPort ?? c.ports?.[0]?.PrivatePort ?? -1,
+      status: (c: any) => c.status || c.state,
+      cpu: (c: any) => c.cpu_pct ?? -1,
+      memory: (c: any) => c.mem_usage ?? -1,
+      net: (c: any) => (c.net_rx ?? 0) + (c.net_tx ?? 0),
+      blkio: (c: any) => c.blkio ?? -1,
+      age: (c: any) => c.age ?? -1,
+    }),
+    [],
+  );
+
+  const { items: rows, sortKey, sortDirection, toggleSort } = useSortable(
+    filtered,
+    "cpu",
+    "desc",
+    sortGetters,
+  );
 
   return (
     <Layout
@@ -90,7 +124,8 @@ export function DockerPage() {
             <path d="M3 3l18 18" />
           </svg>
           <p className="text-sm font-medium text-ink-700">Docker socket not available</p>
-          <p className="max-w-md text-xs text-ink-400">            Mount <code className="rounded bg-ink-100 px-1 py-0.5 font-mono">/var/run/docker.sock</code> into
+          <p className="max-w-md text-xs text-ink-400">
+            Mount <code className="rounded bg-ink-100 px-1 py-0.5 font-mono">/var/run/docker.sock</code> into
             the watchtower container (already present in docker-compose.yml) and redeploy.
           </p>
         </div>
@@ -107,18 +142,22 @@ export function DockerPage() {
             <StatTile label="Host uptime" value={fmtUptime(latest?.uptime)} />
           </div>
 
-          <TableCard title="Containers" subtitle={`sorted by CPU · ${rows.length} shown`}>            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span></div>
+          <TableCard title="Containers" subtitle={`sorted by ${sortKey ?? "default"} · ${rows.length} shown`}>
+            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span>
+            </div>
             <table className="w-full">
               <thead>
                 <tr>
-                  <Th>Container</Th>
-                  <Th className="hidden sm:table-cell">Ports</Th>
-                  <Th>Status</Th>
-                  <Th className="w-36">CPU</Th>
-                  <Th className="w-36">Memory</Th>
-                  <Th className="text-right hidden md:table-cell">Net ↓ / ↑ total</Th>
-                  <Th className="text-right hidden lg:table-cell">Block I/O</Th>
-                  <Th className="text-right hidden sm:table-cell">Up</Th>
+                  <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Container</Th>
+                  <Th sortKey="ports" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="hidden sm:table-cell">Ports</Th>
+                  <Th sortKey="status" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Status</Th>
+                  <Th sortKey="cpu" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="w-36">CPU</Th>
+                  <Th sortKey="memory" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="w-36">Memory</Th>
+                  <Th sortKey="net" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden md:table-cell">Net ↓ / ↑ total</Th>
+                  <Th sortKey="blkio" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden lg:table-cell">Block I/O</Th>
+                  <Th sortKey="age" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden sm:table-cell">Up</Th>
                 </tr>
               </thead>
               <tbody>

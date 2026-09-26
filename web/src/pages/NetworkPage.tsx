@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { RangeKey } from "../lib/api";
-import { useDetails, useSeries } from "../lib/hooks";
+import { useDetails, useSeries, useSortable } from "../lib/hooks";
 import { fmtBytes, fmtRate } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
@@ -30,19 +30,42 @@ export function NetworkPage() {
   const { data: d } = useDetails();
   const { points } = useSeries(range);
 
+  const nics = useMemo(() => d?.network?.interfaces ?? [], [d]);
+
+  const addrsByIface = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!d?.addresses) return map;
+    for (const a of d.addresses) {
+      const list = map.get(a.iface) ?? [];
+      list.push(a.address);
+      map.set(a.iface, list);
+    }
+    return map;
+  }, [d]);
+
+  const sortGetters = useMemo(() => ({
+    name: (n: any) => n.name,
+    status: (n: any) => (n.up ? 1 : 0),
+    addresses: (n: any) => (addrsByIface.get(n.name) ?? []).join(" "),
+    link: (n: any) => n.speed_mbps ?? 0,
+    recv_rate: (n: any) => n.recv_rate ?? 0,
+    sent_rate: (n: any) => n.sent_rate ?? 0,
+    err_drop: (n: any) => (n.packets_err ?? 0) + (n.packets_drop ?? 0),
+  }), [addrsByIface]);
+
+  const { items: sortedNics, sortKey, sortDirection, toggleSort } = useSortable(
+    nics,
+    "name",
+    "asc",
+    sortGetters
+  );
+
   if (!d) return <Layout title="Network"><LoadingBlock /></Layout>;
 
-  const nics = d.network.interfaces;
   const total = nics.reduce(
     (a, n) => ({ rx: a.rx + (n.recv_rate ?? 0), tx: a.tx + (n.sent_rate ?? 0) }),
     { rx: 0, tx: 0 },
   );
-  const addrsByIface = new Map<string, string[]>();
-  for (const a of d.addresses) {
-    const list = addrsByIface.get(a.iface) ?? [];
-    list.push(a.address);
-    addrsByIface.set(a.iface, list);
-  }
 
   return (
     <Layout title="Network" subtitle={`${nics.length} interfaces · aggregate throughput`} range={range} onRange={setRange}>
@@ -86,17 +109,17 @@ export function NetworkPage() {
           <table className="w-full">
             <thead>
               <tr>
-                <Th>Interface</Th>
-                <Th>Status</Th>
-                <Th className="hidden sm:table-cell">Addresses</Th>
-                <Th className="hidden md:table-cell">Link</Th>
-                <Th className="text-right">Down</Th>
-                <Th className="text-right">Up</Th>
-                <Th className="text-right hidden sm:table-cell">Err / Drop</Th>
+                <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Interface</Th>
+                <Th sortKey="status" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Status</Th>
+                <Th sortKey="addresses" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="hidden sm:table-cell">Addresses</Th>
+                <Th sortKey="link" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="hidden md:table-cell">Link</Th>
+                <Th sortKey="recv_rate" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Down</Th>
+                <Th sortKey="sent_rate" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Up</Th>
+                <Th sortKey="err_drop" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden sm:table-cell">Err / Drop</Th>
               </tr>
             </thead>
             <tbody>
-              {nics.map((n) => (
+              {sortedNics.map((n) => (
                 <tr key={n.name} className="border-t border-ink-100">
                   <Td className="font-medium text-ink-900">{n.name}</Td>
                   <Td>
@@ -123,7 +146,7 @@ export function NetworkPage() {
                   </Td>
                 </tr>
               ))}
-              {nics.length === 0 && (
+              {sortedNics.length === 0 && (
                 <tr><Td className="text-ink-400">No non-loopback interfaces found.</Td></tr>
               )}
             </tbody>

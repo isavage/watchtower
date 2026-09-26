@@ -1,13 +1,91 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { LoadingBlock, TableCard, Td, Th } from "../components/ui";
+import { useSortable } from "../lib/hooks";
 
 function Badge({ children, tone }: { children: React.ReactNode; tone: "blue" | "green" | "amber" | "slate" }) { const styles = { blue: "bg-sky-50 text-sky-700 ring-sky-200", green: "bg-emerald-50 text-emerald-700 ring-emerald-200", amber: "bg-amber-50 text-amber-700 ring-amber-200", slate: "bg-ink-100 text-ink-600 ring-ink-200" }; return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${styles[tone]}`}>{children}</span>; }
 function prefixTone(cidr: string) { const prefix = Number(cidr.split("/")[1]); return prefix >= 24 ? "green" : prefix >= 16 ? "blue" : "amber"; }
 function driverTone(driver: string) { return driver === "bridge" ? "blue" : driver === "overlay" ? "green" : driver === "host" ? "amber" : "slate"; }
+
 export function DockerNetworksPage() {
   const [data, setData] = useState<any>(null);
   useEffect(() => { fetch("/api/docker/networks", { credentials: "same-origin" }).then((r) => r.json()).then(setData); }, []);
+
+  const networks: any[] = data?.networks ?? [];
+
+  const sortGetters = useMemo(() => ({
+    name: (n: any) => n.name,
+    driver: (n: any) => n.driver || "",
+    scope: (n: any) => n.scope || "",
+    ip_ranges: (n: any) => (n.subnets ?? []).join(", "),
+    used_by: (n: any) => (n.used_by ?? []).length,
+  }), []);
+
+  const { items: sortedNetworks, sortKey, sortDirection, toggleSort } = useSortable(
+    networks,
+    "name",
+    "asc",
+    sortGetters
+  );
+
   if (!data) return <Layout title="Docker"><LoadingBlock /></Layout>;
-    return <Layout title="Docker" subtitle="networks and IP ranges on this host"><div className="grid gap-5"><TableCard title="Networks" subtitle={`${data.networks?.length ?? 0} networks`}><div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><Badge tone="green">/24+ local</Badge><Badge tone="blue">/16–/23 private</Badge><Badge tone="amber">larger range</Badge></div><table className="w-full"><thead><tr><Th>Name</Th><Th>Driver</Th><Th>Scope</Th><Th>IP ranges</Th><Th>Used by</Th></tr></thead><tbody>{(data.networks ?? []).map((network: any) => { const users: string[] = network.used_by ?? []; return <tr key={network.id} className="border-t border-ink-100"><Td><div className="font-medium text-ink-900">{network.name}</div><div className="font-mono text-[10px] text-ink-400">{network.id}</div></Td><Td><Badge tone={driverTone(network.driver) as any}>{network.driver || "unknown"}</Badge></Td><Td>{network.scope}{network.internal ? " · internal" : ""}</Td><Td mono><div className="flex flex-wrap gap-1">{(network.subnets ?? []).length ? network.subnets.map((subnet: string) => <Badge key={subnet} tone={prefixTone(subnet) as any}>{subnet}</Badge>) : <span className="text-ink-400">—</span>}{network.gateways?.map((gateway: string) => <Badge key={gateway} tone="slate">gw {gateway}</Badge>)}</div></Td><Td>{users.length ? <div className="flex max-w-[260px] flex-wrap gap-1">{users.map((u) => <Badge key={u} tone="green">{u}</Badge>)}</div> : <span className="text-ink-400">—</span>}</Td></tr>; })}</tbody></table></TableCard></div></Layout>;
+
+  return (
+    <Layout title="Docker" subtitle="networks and IP ranges on this host">
+      <div className="grid gap-5">
+        <TableCard title="Networks" subtitle={`${networks.length} networks`}>
+          <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500">
+            <Badge tone="green">/24+ local</Badge>
+            <Badge tone="blue">/16–/23 private</Badge>
+            <Badge tone="amber">larger range</Badge>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr>
+                <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Name</Th>
+                <Th sortKey="driver" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Driver</Th>
+                <Th sortKey="scope" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Scope</Th>
+                <Th sortKey="ip_ranges" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>IP ranges</Th>
+                <Th sortKey="used_by" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Used by</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedNetworks.map((network: any) => {
+                const users: string[] = network.used_by ?? [];
+                return (
+                  <tr key={network.id} className="border-t border-ink-100">
+                    <Td>
+                      <div className="font-medium text-ink-900">{network.name}</div>
+                      <div className="font-mono text-[10px] text-ink-400">{network.id}</div>
+                    </Td>
+                    <Td><Badge tone={driverTone(network.driver) as any}>{network.driver || "unknown"}</Badge></Td>
+                    <Td>{network.scope}{network.internal ? " · internal" : ""}</Td>
+                    <Td mono>
+                      <div className="flex flex-wrap gap-1">
+                        {(network.subnets ?? []).length ? (
+                          network.subnets.map((subnet: string) => <Badge key={subnet} tone={prefixTone(subnet) as any}>{subnet}</Badge>)
+                        ) : (
+                          <span className="text-ink-400">—</span>
+                        )}
+                        {network.gateways?.map((gateway: string) => <Badge key={gateway} tone="slate">gw {gateway}</Badge>)}
+                      </div>
+                    </Td>
+                    <Td>
+                      {users.length ? (
+                        <div className="flex max-w-[260px] flex-wrap gap-1">
+                          {users.map((u) => <Badge key={u} tone="green">{u}</Badge>)}
+                        </div>
+                      ) : (
+                        <span className="text-ink-400">—</span>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableCard>
+      </div>
+    </Layout>
+  );
 }
