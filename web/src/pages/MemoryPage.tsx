@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { RangeKey } from "../lib/api";
-import { useDetails, useSeries } from "../lib/hooks";
+import { useDetails, useSeries, useSortable } from "../lib/hooks";
 import { fmtBytes, fmtPct } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
@@ -12,6 +12,24 @@ export function MemoryPage() {
   const [range, setRange] = useState<RangeKey>("1h");
   const { data: d } = useDetails();
   const { points } = useSeries(range);
+
+  const processes = useMemo(() => d?.processes?.top_mem ?? [], [d]);
+
+  const sortGetters = useMemo(() => ({
+    pid: (p: any) => p.pid,
+    name: (p: any) => p.name,
+    user: (p: any) => p.user,
+    mem_rss: (p: any) => p.mem_rss ?? 0,
+    mem_pct: (p: any) => p.mem_pct ?? 0,
+    share: (p: any) => p.mem_pct ?? 0,
+  }), []);
+
+  const { items: sortedProcesses, sortKey, sortDirection, toggleSort } = useSortable(
+    processes,
+    "mem_rss",
+    "desc",
+    sortGetters
+  );
 
   if (!d) return <Layout title="Memory"><LoadingBlock /></Layout>;
   const m = d.memory;
@@ -82,16 +100,16 @@ export function MemoryPage() {
           <table className="w-full">
             <thead>
               <tr>
-                <Th>PID</Th>
-                <Th>Process</Th>
-                <Th>User</Th>
-                <Th className="text-right">RSS</Th>
-                <Th className="text-right">Mem %</Th>
-                <Th className="hidden sm:table-cell">Share</Th>
+                <Th sortKey="pid" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>PID</Th>
+                <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Process</Th>
+                <Th sortKey="user" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>User</Th>
+                <Th sortKey="mem_rss" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">RSS</Th>
+                <Th sortKey="mem_pct" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Mem %</Th>
+                <Th sortKey="share" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="hidden sm:table-cell">Share</Th>
               </tr>
             </thead>
             <tbody>
-              {d.processes.top_mem.map((p) => (
+              {sortedProcesses.map((p) => (
                 <tr key={p.pid} className="border-t border-ink-100">
                   <Td mono className="text-ink-400">{p.pid}</Td>
                   <Td className="font-medium text-ink-900">{p.name}</Td>

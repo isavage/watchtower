@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { api, Details, DockerInfo, MetricPoint, RangeKey, UnauthorizedError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -118,4 +118,47 @@ export function useDocker(intervalMs = 3000) {
   }, [intervalMs, clear]);
 
   return { data, error };
+}
+/** Sort an array of objects by column key and direction. */
+export function useSortable<T>(
+  items: T[],
+  defaultKey: string | null = null,
+  defaultDirection: "asc" | "desc" = "asc",
+  getters?: Record<string, (item: T) => any>
+) {
+  const [sortKey, setSortKey] = useState<string | null>(defaultKey);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">(defaultDirection);
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    if (!sortKey) return items;
+    const getter = getters?.[sortKey] ?? ((item: any) => item[sortKey]);
+    return [...items].sort((a, b) => {
+      const va = getter(a);
+      const vb = getter(b);
+
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+
+      if (typeof va === "string" && typeof vb === "string") {
+        const res = va.localeCompare(vb, undefined, { numeric: true, sensitivity: "base" });
+        return sortDirection === "asc" ? res : -res;
+      }
+
+      if (va < vb) return sortDirection === "asc" ? -1 : 1;
+      if (va > vb) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [items, sortKey, sortDirection, getters]);
+
+  return { items: sortedItems, sortKey, sortDirection, toggleSort };
 }

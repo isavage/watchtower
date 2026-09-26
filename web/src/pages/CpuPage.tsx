@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { RangeKey } from "../lib/api";
-import { useDetails, useSeries, useSummary } from "../lib/hooks";
+import { useDetails, useSeries, useSortable, useSummary } from "../lib/hooks";
 import { fmtDuration, fmtNum, fmtPct } from "../lib/format";
 import { Layout } from "../components/Layout";
 import { MetricCard } from "../components/MetricCard";
@@ -24,6 +24,25 @@ export function CpuPage() {
   const { data: d } = useDetails();
   const { latest } = useSummary();
   const { points } = useSeries(range);
+
+  const processes = useMemo(() => d?.processes?.top_cpu ?? [], [d]);
+
+  const sortGetters = useMemo(() => ({
+    pid: (p: any) => p.pid,
+    name: (p: any) => p.name,
+    user: (p: any) => p.user,
+    cpu: (p: any) => p.cpu_pct ?? 0,
+    mem: (p: any) => p.mem_pct ?? 0,
+    threads: (p: any) => p.threads ?? 0,
+    age: (p: any) => p.age ?? 0,
+  }), []);
+
+  const { items: sortedProcesses, sortKey, sortDirection, toggleSort } = useSortable(
+    processes,
+    "cpu",
+    "desc",
+    sortGetters
+  );
 
   if (!d) return <Layout title="CPU"><LoadingBlock /></Layout>;
 
@@ -119,17 +138,17 @@ export function CpuPage() {
           <table className="w-full">
             <thead>
               <tr>
-                <Th>PID</Th>
-                <Th>Process</Th>
-                <Th>User</Th>
-                <Th className="text-right">CPU</Th>
-                <Th className="text-right">Mem</Th>
-                <Th className="text-right hidden sm:table-cell">Threads</Th>
-                <Th className="hidden lg:table-cell">Uptime</Th>
+                <Th sortKey="pid" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>PID</Th>
+                <Th sortKey="name" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>Process</Th>
+                <Th sortKey="user" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort}>User</Th>
+                <Th sortKey="cpu" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">CPU</Th>
+                <Th sortKey="mem" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right">Mem</Th>
+                <Th sortKey="threads" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="text-right hidden sm:table-cell">Threads</Th>
+                <Th sortKey="age" currentSortKey={sortKey} sortDirection={sortDirection} onSort={toggleSort} className="hidden lg:table-cell">Uptime</Th>
               </tr>
             </thead>
             <tbody>
-              {d.processes.top_cpu.map((p) => (
+              {sortedProcesses.map((p) => (
                 <tr key={p.pid} className="border-t border-ink-100">
                   <Td mono className="text-ink-400">{p.pid}</Td>
                   <Td className="font-medium text-ink-900">{p.name}</Td>
