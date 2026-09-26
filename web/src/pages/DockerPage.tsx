@@ -6,13 +6,62 @@ import { LoadingBlock, StatTile, TableCard, Td, Th, UsageBar } from "../componen
 
 function PortBadges({ ports }: { ports: { PublicPort?: number; PrivatePort: number; Type: string }[] }) {
   if (!ports.length) return <span className="text-ink-400">—</span>;
-  return <div className="flex max-w-[220px] flex-wrap gap-1">{ports.map((port, index) => {
-    const host = port.PublicPort != null;
-    return <span key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`} title={host ? "Published host port" : "Container-only exposed port"} className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"}`}>
-      {host ? `${port.PublicPort}:` : ""}{port.PrivatePort}/{port.Type}
-    </span>;
-  })}</div>;
+  return (
+    <div className="flex max-w-[220px] flex-wrap gap-1">
+      {ports.map((port, index) => {
+        const host = port.PublicPort != null;
+        return (
+          <span
+            key={`${port.PrivatePort}-${port.PublicPort ?? "exposed"}-${index}`}
+            title={host ? "Published host port" : "Container-only exposed port"}
+            className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${
+              host ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+            }`}
+          >
+            {host ? `${port.PublicPort}:` : ""}
+            {port.PrivatePort}/{port.Type}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
+
+function getStatusTone(state?: string, status?: string): { badge: string; dot: string } {
+  const s = (status || "").toLowerCase();
+  const st = (state || "").toLowerCase();
+
+  // Unhealthy or dead containers should be clearly flagged red/rose
+  if (s.includes("unhealthy") || st === "dead") {
+    return {
+      badge: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+      dot: "bg-rose-500",
+    };
+  }
+
+  // Health starting, restarting, or paused containers
+  if (s.includes("health: starting") || st === "restarting" || st === "paused") {
+    return {
+      badge: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+      dot: "bg-amber-500",
+    };
+  }
+
+  // Healthy or cleanly running containers
+  if (st === "running" || s.includes("healthy") || s.startsWith("up")) {
+    return {
+      badge: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+      dot: "bg-emerald-500",
+    };
+  }
+
+  // Exited, created, or other non-running states
+  return {
+    badge: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+    dot: "bg-amber-500",
+  };
+}
+
 export function DockerPage() {
   const { data, error } = useDocker();
   const { latest } = useSummary();
@@ -25,22 +74,25 @@ export function DockerPage() {
     return list.filter((c) => c.name.toLowerCase().includes(q) || c.image.toLowerCase().includes(q));
   }, [data, filter]);
 
-  const sortGetters = useMemo(() => ({
-    name: (c: any) => c.name,
-    ports: (c: any) => c.ports?.[0]?.PublicPort ?? c.ports?.[0]?.PrivatePort ?? -1,
-    status: (c: any) => c.status || c.state,
-    cpu: (c: any) => c.cpu_pct ?? -1,
-    memory: (c: any) => c.mem_usage ?? -1,
-    net: (c: any) => (c.net_rx ?? 0) + (c.net_tx ?? 0),
-    blkio: (c: any) => c.blkio ?? -1,
-    age: (c: any) => c.age ?? -1,
-  }), []);
+  const sortGetters = useMemo(
+    () => ({
+      name: (c: any) => c.name,
+      ports: (c: any) => c.ports?.[0]?.PublicPort ?? c.ports?.[0]?.PrivatePort ?? -1,
+      status: (c: any) => c.status || c.state,
+      cpu: (c: any) => c.cpu_pct ?? -1,
+      memory: (c: any) => c.mem_usage ?? -1,
+      net: (c: any) => (c.net_rx ?? 0) + (c.net_tx ?? 0),
+      blkio: (c: any) => c.blkio ?? -1,
+      age: (c: any) => c.age ?? -1,
+    }),
+    [],
+  );
 
   const { items: rows, sortKey, sortDirection, toggleSort } = useSortable(
     filtered,
     "cpu",
     "desc",
-    sortGetters
+    sortGetters,
   );
 
   return (
@@ -91,7 +143,10 @@ export function DockerPage() {
           </div>
 
           <TableCard title="Containers" subtitle={`sorted by ${sortKey ?? "default"} · ${rows.length} shown`}>
-            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span></div>
+            <div className="mb-3 flex flex-wrap gap-2 px-2 text-xs text-ink-500">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />host published</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />container exposed</span>
+            </div>
             <table className="w-full">
               <thead>
                 <tr>
@@ -106,45 +161,46 @@ export function DockerPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => (
-                  <tr key={c.id} className="border-t border-ink-100 align-middle">
-                    <Td>
-                      <div className="font-medium text-ink-900">{c.name}</div>
-                      <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
-                    </Td>
-                    <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
-                    <Td>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          c.state === "running" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${c.state === "running" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                        {c.status || c.state}
-                      </span>
-                    </Td>
-                    <Td>
-                      <UsageBar pct={c.cpu_pct} label="" color="#0ea5e9" right={c.cpu_pct != null ? `${c.cpu_pct.toFixed(1)}%` : "—"} />
-                    </Td>
-                    <Td>
-                      <UsageBar
-                        pct={c.mem_pct}
-                        label=""
-                        color="#8b5cf6"
-                        right={c.mem_usage != null ? `${fmtBytes(c.mem_usage)}${c.mem_pct != null ? ` · ${c.mem_pct.toFixed(0)}%` : ""}` : "—"}
-                      />
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 md:table-cell">
-                      {c.net_rx != null ? `${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx ?? 0)}` : "—"}
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 lg:table-cell">
-                      {c.blkio != null ? fmtBytes(c.blkio) : "—"}
-                    </Td>
-                    <Td mono className="text-right hidden text-ink-500 sm:table-cell">
-                      {c.age != null ? fmtDuration(c.age) : "—"}
-                    </Td>
-                  </tr>
-                ))}
+                {rows.map((c) => {
+                  const tone = getStatusTone(c.state, c.status);
+                  return (
+                    <tr key={c.id} className="border-t border-ink-100 align-middle">
+                      <Td>
+                        <div className="font-medium text-ink-900">{c.name}</div>
+                        <div className="font-mono text-[10px] text-ink-400">{c.id}</div>
+                      </Td>
+                      <Td className="hidden text-ink-500 sm:table-cell"><PortBadges ports={c.ports ?? []} /></Td>
+                      <Td>
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone.badge}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                          {c.status || c.state}
+                        </span>
+                      </Td>
+                      <Td>
+                        <UsageBar pct={c.cpu_pct} label="" color="#0ea5e9" right={c.cpu_pct != null ? `${c.cpu_pct.toFixed(1)}%` : "—"} />
+                      </Td>
+                      <Td>
+                        <UsageBar
+                          pct={c.mem_pct}
+                          label=""
+                          color="#8b5cf6"
+                          right={c.mem_usage != null ? `${fmtBytes(c.mem_usage)}${c.mem_pct != null ? ` · ${c.mem_pct.toFixed(0)}%` : ""}` : "—"}
+                        />
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 md:table-cell">
+                        {c.net_rx != null ? `${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx ?? 0)}` : "—"}
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 lg:table-cell">
+                        {c.blkio != null ? fmtBytes(c.blkio) : "—"}
+                      </Td>
+                      <Td mono className="text-right hidden text-ink-500 sm:table-cell">
+                        {c.age != null ? fmtDuration(c.age) : "—"}
+                      </Td>
+                    </tr>
+                  );
+                })}
                 {rows.length === 0 && (
                   <tr>
                     <Td className="text-ink-400">No containers match.</Td>
