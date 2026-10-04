@@ -39,6 +39,12 @@ API. Same visibility, dramatically smaller attack surface.
   interfaces: per-NIC rates from `/proc/net/dev`, link state/speed/MTU from
   `/sys/class/net`, and real host IPs (a container's own network namespace
   would only ever show its Docker bridge IP).
+- **Websites page** — per-site traffic stats parsed from your nginx access
+  logs (one log file per site). The host-proxy keeps byte offsets into each
+  log and returns only **derived aggregates** for newly-appended lines —
+  request counts, status-class splits, bytes, approximate unique clients and
+  top paths. Raw log lines, client IPs and user agents never leave the proxy
+  and are never stored. History lives in SQLite (same 7-day retention).
 - **Security page** — read-only host visibility, **derived facts only**: UFW
   status and default policies, iptables/nftables rules, listening sockets in
   the *host* network namespace, effective sshd config (first-value-wins across
@@ -95,7 +101,8 @@ The `host-proxy` (`hostproxy/`, its own image) is the only container with
 host visibility, and its policy mirrors docker-socket-proxy's env-var model:
 **GET only** (no write path exists), a shared bearer token
 (`WT_HOST_PROXY_TOKEN`, fail-closed when unset), and one allow/deny flag per
-endpoint — `WT_ALLOW_METRICS`, `WT_ALLOW_DETAILS`, `WT_ALLOW_SECURITY`.
+endpoint — `WT_ALLOW_METRICS`, `WT_ALLOW_DETAILS`, `WT_ALLOW_SECURITY`,
+`WT_ALLOW_WEBSTATS`.
 It lives on an `internal: true` Docker network (no internet route, reachable
 only by the app container), runs with `cap_drop: ALL`, `no-new-privileges`
 and a read-only rootfs. If the web app is ever compromised, the attacker
@@ -231,6 +238,7 @@ production).
 | `WT_DOCKER_SOCKET`   | `/var/run/docker.sock` | Docker Engine API: socket path or `tcp://host:port` (the compose stack points this at docker-socket-proxy) |
 | `WT_HOST_PROXY_URL`  | *(empty)*              | host-proxy base URL; empty = read local `/proc` directly (dev). The compose stack points this at `http://host-proxy:8090` |
 | `WT_HOST_PROXY_TOKEN`| *(empty)*              | Bearer token shared by the app and host-proxy (generate like `WT_SECRET_KEY`) |
+| `WT_WEBSTATS_INTERVAL` | `60`                 | Seconds between nginx-log delta ingests (Websites page) |
 
 **host-proxy variables** (set on the `host-proxy` service):
 
@@ -240,6 +248,9 @@ production).
 | `WT_ALLOW_METRICS`    | `1`     | Allow `GET /api/sample` (dashboard metric rows)      |
 | `WT_ALLOW_DETAILS`    | `1`     | Allow `GET /api/details` (per-core, processes, disks, NICs) |
 | `WT_ALLOW_SECURITY`   | `0`     | Allow `GET /api/security` (/etc + auth-log facts). Keep `0` — and drop the matching mounts — unless the Security page is needed |
+| `WT_ALLOW_WEBSTATS`   | `0`     | Allow `GET /api/webstats` (per-site nginx access-log aggregates). Requires the log-directory mount; set `0` and drop the mount to deny it entirely |
+| `WT_NGINX_LOG_DIR`    | *(empty)* | Host path of the per-site access logs (e.g. `/docker/nginx/logs`), seen by the collector through the `/host` root. Must match the bind mount |
+| `WT_WEBSTATS_TAIL_MB` | `8`     | MB of a first-seen log file parsed as history (rotation/truncation guard) |
 
 ## API
 
@@ -255,6 +266,7 @@ production).
 | `/api/docker/networks`  | GET    | Docker networks                      |
 | `/api/docker/volumes`   | GET    | Docker volumes with size + which containers mount them |
 | `/api/security`         | GET    | Derived host security snapshot (firewall, listeners, effective sshd, auth counts) |
+| `/api/webstats?range=24h` | GET | Per-site traffic stats from SQLite (`&site=` adds that site's series + top paths) |
 | `/api/series?range=1h`  | GET    | Downsampled series for the range     |
 | `/api/health`           | GET    | Liveness — also reports host-proxy / docker-proxy reachability (503 when a sidecar is down) |
 
@@ -267,6 +279,7 @@ production).
 | `/api/sample`     | `WT_ALLOW_METRICS`   | One collector sample (dashboard metric row) |
 | `/api/details`    | `WT_ALLOW_DETAILS`   | Per-core CPU, memory, partitions, disk I/O, NICs, top processes (**name/user/cpu/mem only — no cmdline**) |
 | `/api/security`   | `WT_ALLOW_SECURITY`  | Firewall / sshd / listener facts + auth **counts** (no raw log lines) |
+| `/api/webstats`   | `WT_ALLOW_WEBSTATS`  | **Delta only**: aggregates for log bytes appended since the previous poll (no IPs, UAs or raw lines). Exactly one poller — the app ingester — may call it; a second poller would steal deltas |
 | `/api/health`     | always on            | Liveness + active allow-list             |
 
 ## Notes on host monitoring
@@ -280,6 +293,7 @@ volumes:
   - /proc:/host/proc:ro
   - /sys:/host/sys:ro
   - /etc/ufw/... , /etc/default/ufw, /etc/nftables.conf, /etc/ssh, /var/log/auth.log
+  - /docker/nginx/logs:/host/docker/nginx/logs:ro   # only with WT_ALLOW_WEBSTATS=1
 ```
 
 The app container has **none of these**: with `WT_HOST_PROXY_URL` set it

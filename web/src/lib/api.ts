@@ -154,6 +154,53 @@ export interface DockerInfo {
   containers: DockerContainer[];
 }
 
+// ---- /api/webstats ----
+
+/** Per-site totals summed over the selected range. */
+export interface WebstatsSite {
+  site: string;
+  requests: number;
+  s2xx: number;
+  s3xx: number;
+  s4xx: number;
+  s5xx: number;
+  bytes: number;
+  /** Summed across windows — an upper bound (approximate), not distinct clients. */
+  visitors: number;
+  last_seen: number;
+}
+
+/** A bucketed point for the requests/bytes chart. */
+export interface WebstatsPoint {
+  ts: number;
+  requests: number;
+  bytes: number;
+  errors: number;
+}
+
+export interface WebstatsTopPath {
+  path: string;
+  count: number;
+}
+
+export interface WebstatsStatus {
+  last_ok: number | null;
+  last_error: string | null;
+}
+
+export interface WebstatsResponse {
+  range: RangeKey;
+  start: number;
+  end: number;
+  sites: WebstatsSite[];
+  series: WebstatsPoint[];
+  status: WebstatsStatus;
+  /** Present only when a `site` was requested (drill-down). */
+  site?: string;
+  site_series?: WebstatsPoint[];
+  top_paths?: WebstatsTopPath[];
+}
+
 export const RANGES: { key: RangeKey; label: string }[] = [
   { key: "5m", label: "5m" },
   { key: "15m", label: "15m" },
@@ -202,4 +249,8 @@ export const api = {
     ),
   details: (limit = 15) => request<Details>(`/api/details?limit=${limit}`),
   docker: () => request<DockerInfo>("/api/docker"),
+  webstats: (range: RangeKey, site?: string) =>
+    request<WebstatsResponse>(
+      `/api/webstats?range=${range}${site ? `&site=${encodeURIComponent(site)}` : ""}`,
+    ),
 };

@@ -70,6 +70,16 @@ const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
     ),
   },
   {
+    to: "/websites",
+    label: "Websites",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h4l2 5 3-9 2 4h7" />
+      </svg>
+    ),
+  },
+  {
     to: "/docker",
     label: "Docker",
     icon: (

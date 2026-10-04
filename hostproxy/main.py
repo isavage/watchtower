@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
-from collectors import collector, details as details_mod, security
+from collectors import collector, details as details_mod, security, webstats
 from collectors.hostconfig import host_config
 
 from .config import proxy_config
@@ -59,7 +59,7 @@ app = FastAPI(
 )
 
 # endpoint key -> its allow flag, kept in sync with config.allow_map()
-_ENDPOINTS = ("metrics", "details", "security")
+_ENDPOINTS = ("metrics", "details", "security", "webstats")
 
 
 def _denied(status_code: int, detail: str) -> JSONResponse:
@@ -165,3 +165,21 @@ def security_snapshot():
     if denied:
         return denied
     return security.snapshot()
+
+
+# One stateful WebstatsTracker for the process, for the same reason as
+# _collector above: it remembers byte offsets per log file, so each call
+# returns only the lines appended since the previous one. A fresh tracker per
+# request would re-read the capped tail every time and double-count. The
+# delta is *consumed*: exactly one client (the app's webstats ingester) may
+# poll this endpoint — a second poller would steal its deltas.
+_webstats = webstats.WebstatsTracker()
+
+
+@app.get("/api/webstats")
+def webstats_delta():
+    """Per-site nginx access-log aggregates for the lines since the previous poll."""
+    denied = _guard("webstats")
+    if denied:
+        return denied
+    return _webstats.poll()

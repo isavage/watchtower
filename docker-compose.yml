@@ -54,6 +54,8 @@ services:
       # bearer token must match the one the proxy serves (fail-closed there).
       WT_HOST_PROXY_URL: http://watchtower.host.proxy:8090
       WT_HOST_PROXY_TOKEN: ${WT_HOST_PROXY_TOKEN:?WT_HOST_PROXY_TOKEN not set (check Doppler)}
+      # How often the Websites ingester pulls a log delta from host-proxy.
+      WT_WEBSTATS_INTERVAL: ${WT_WEBSTATS_INTERVAL:-60}
 
   # ---------------------------------------------------------------------
   # host-proxy: the ONLY container with host visibility. Read-only JSON API
@@ -89,6 +91,15 @@ services:
       - /etc/ssh:/host/etc/ssh:ro
       - /var/log/auth.log:/host/var/log/auth.log:ro
       - /var/log/secure:/host/var/log/secure:ro
+      # Websites page: ONE opt-in directory for the per-site nginx access
+      # logs. Same rule as the extra-disk mount above — never a broad parent
+      # (/docker, /var/log, or the host root). If your logs live elsewhere,
+      # change BOTH the host path here AND WT_NGINX_LOG_DIR below (they must
+      # describe the same directory through /host). Drop this mount together
+      # with WT_ALLOW_WEBSTATS=0 and the logs become unreachable to every
+      # container. Only derived aggregates (counts, byte sums, top paths)
+      # ever leave the proxy — never raw lines, client IPs or user agents.
+      - /docker/nginx/logs:/host/docker/nginx/logs:ro
     # Least privilege for the privileged corner: no capabilities (host /proc
     # reads need none through the shared pid namespace), read-only rootfs,
     # no writes anywhere, no privilege escalation.
@@ -124,6 +135,15 @@ services:
       # Security page: /etc + auth.log facts. Set 0 (and remove the /etc and
       # /var/log mounts above) to deny file-based visibility entirely.
       WT_ALLOW_SECURITY: ${WT_ALLOW_SECURITY:-1}
+      # Websites page: per-site nginx access-log aggregates. Set 0 (and remove
+      # the log mount above) to deny log visibility entirely.
+      WT_ALLOW_WEBSTATS: ${WT_ALLOW_WEBSTATS:-1}
+      # Host path of the per-site access logs, as seen by the collector through
+      # /host. Must match the read-only bind mount above.
+      WT_NGINX_LOG_DIR: ${WT_NGINX_LOG_DIR:-/docker/nginx/logs}
+      # How much of a brand-new (first-seen) log file to parse as history.
+      # Keeps a rotated multi-GB log from being read whole.
+      WT_WEBSTATS_TAIL_MB: ${WT_WEBSTATS_TAIL_MB:-8}
 
   # Read-only gateway to the Docker Engine socket; only the endpoints the app
   # actually calls are enabled, everything destructive stays denied.

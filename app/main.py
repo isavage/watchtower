@@ -15,6 +15,7 @@ from . import docker as docker_mod
 from .api import auth_routes, metrics_routes
 from .config import config
 from . import hostproxy_client
+from . import webstats as webstats_mod
 from .sampler import run_sampler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     store.init_db()
     stop = asyncio.Event()
     task = asyncio.create_task(run_sampler(stop))
+    webstats_task = asyncio.create_task(webstats_mod.run_webstats_ingester(stop))
     log.info(
         "watchtower started (interval=%ss, host_source=%s, db=%s)",
         config.sample_interval,
@@ -39,6 +41,7 @@ async def lifespan(app: FastAPI):
     finally:
         stop.set()
         await task
+        await webstats_task
 
 
 app = FastAPI(title="Watchtower", lifespan=lifespan)

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
-import { api, Details, DockerInfo, MetricPoint, RangeKey, UnauthorizedError } from "../lib/api";
+import { api, Details, DockerInfo, MetricPoint, RangeKey, UnauthorizedError, WebstatsResponse } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 /** Poll the live summary on an interval. */
@@ -119,6 +119,46 @@ export function useDocker(intervalMs = 3000) {
 
   return { data, error };
 }
+/** Poll the nginx per-site webstats over a time range (optional site drill-down).
+ *  The ingester writes one row-set per window (default 60s), so a slower poll
+ *  than the live metrics is plenty. */
+export function useWebstats(range: RangeKey, site?: string, intervalMs = 20000) {
+  const { clear } = useAuth();
+  const [data, setData] = useState<WebstatsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const reqId = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    const id = ++reqId.current;
+    setLoading(true);
+    const tick = async () => {
+      try {
+        const r = await api.webstats(range, site);
+        if (alive && id === reqId.current) {
+          setData(r);
+          setError(null);
+        }
+      } catch (e) {
+        if (!alive || id !== reqId.current) return;
+        if (e instanceof UnauthorizedError) clear();
+        else setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        if (alive && id === reqId.current) setLoading(false);
+      }
+    };
+    tick();
+    const timer = setInterval(tick, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [range, site, intervalMs, clear]);
+
+  return { data, error, loading };
+}
+
 /** Sort an array of objects by column key and direction. */
 export function useSortable<T>(
   items: T[],

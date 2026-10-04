@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import auth, docker as docker_mod, hostproxy_client, store
+from .. import webstats as webstats_mod
 from collectors import details, security
 
 router = APIRouter(prefix="/api", tags=["metrics"], dependencies=[Depends(auth.current_user)])
@@ -67,6 +68,34 @@ def security_endpoint() -> dict:
             raise HTTPException(status_code=503, detail="host-proxy unavailable (or WT_ALLOW_SECURITY=0)")
         return data
     return security.snapshot()
+
+
+@router.get("/webstats")
+def webstats_endpoint(
+    range: str = Query("24h", pattern="^(5m|15m|1h|6h|24h|7d)$"),
+    site: str | None = Query(None, max_length=255, description="Drill into one site"),
+) -> dict:
+    """Per-site nginx stats from the SQLite store, filled by the ingester.
+
+    Reads only our own DB — the log files stay behind the host-proxy, and
+    the stored rows are derived aggregates (no IPs, no raw lines).
+    """
+    seconds, points = RANGES[range]
+    end = time.time()
+    start = end - seconds
+    out = {
+        "range": range,
+        "start": start,
+        "end": end,
+        "sites": store.webstats_sites(start, end),
+        "series": store.webstats_series(start, end, points),
+        "status": webstats_mod.status(),
+    }
+    if site:
+        out["site"] = site
+        out["site_series"] = store.webstats_site_series(site, start, end, points)
+        out["top_paths"] = store.webstats_top_paths(site, start, end)
+    return out
 
 
 @router.get("/docker/images")

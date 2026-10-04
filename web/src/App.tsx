@@ -8,6 +8,7 @@ import { DiskPage } from "./pages/DiskPage";
 import { NetworkPage } from "./pages/NetworkPage";
 import { DockerPage } from "./pages/DockerPage";
 import { SecurityPage } from "./pages/SecurityPage";
+import { WebStatsPage } from "./pages/WebStatsPage";
 import { DockerImagesPage } from "./pages/DockerImagesPage";
 import { DockerNetworksPage } from "./pages/DockerNetworksPage";
 import { DockerVolumesPage } from "./pages/DockerVolumesPage";
@@ -78,6 +79,7 @@ export default function App() {
               </Gate>
             }
           />
+          <Route path="/websites" element={<Gate><WebStatsPage /></Gate>} />
           <Route path="/security" element={<Gate><SecurityPage /></Gate>} />
           <Route path="/docker/containers" element={<Gate><DockerPage /></Gate>} />
           <Route path="/docker/images" element={<Gate><DockerImagesPage /></Gate>} />

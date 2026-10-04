@@ -25,6 +25,10 @@ class Config:
     # no host mounts at all). Empty = read this machine directly (dev).
     host_proxy_url: str = field(default_factory=lambda: _env("WT_HOST_PROXY_URL", ""))
     host_proxy_token: str = field(default_factory=lambda: _env("WT_HOST_PROXY_TOKEN", ""))
+    # How often the Websites ingester asks host-proxy for the nginx-log delta.
+    # Parsing logs is heavier than /proc sampling and the data is only useful
+    # per-minute, so it runs on its own loop instead of the 2s metric sampler.
+    webstats_interval: float = field(default_factory=lambda: float(_env("WT_WEBSTATS_INTERVAL", "60")))
 
     def __post_init__(self) -> None:
         # A missing secret means we are not behind a deliberate config; generate

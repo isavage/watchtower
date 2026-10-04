@@ -15,6 +15,10 @@ Defaults are deny-safe:
 * ``WT_ALLOW_SECURITY`` — OFF by default: it is the only endpoint whose data
   comes from the /etc and /var/log mounts, so those mounts should only be
   declared when the flag is actually used.
+* ``WT_ALLOW_WEBSTATS`` — OFF by default too: it reads the nginx access-log
+  directory (``WT_NGINX_LOG_DIR``), another mount that should only exist when
+  the flag is on. Deltas only ever contain derived aggregates (counts, byte
+  sums, top paths) — never raw lines, IPs or user agents.
 """
 from __future__ import annotations
 
@@ -36,12 +40,14 @@ class ProxyConfig:
     allow_metrics: bool = field(default_factory=lambda: _allow("WT_ALLOW_METRICS", "1"))
     allow_details: bool = field(default_factory=lambda: _allow("WT_ALLOW_DETAILS", "1"))
     allow_security: bool = field(default_factory=lambda: _allow("WT_ALLOW_SECURITY", "0"))
+    allow_webstats: bool = field(default_factory=lambda: _allow("WT_ALLOW_WEBSTATS", "0"))
 
     def allow_map(self) -> dict[str, bool]:
         return {
             "metrics": self.allow_metrics,
             "details": self.allow_details,
             "security": self.allow_security,
+            "webstats": self.allow_webstats,
         }
 
 

@@ -8,19 +8,19 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { MetricPoint } from "../lib/api";
 import { fmtBytes, fmtClock, fmtClockWithDate, fmtClockWithHours } from "../lib/format";
 
 interface Series {
-  key: keyof MetricPoint;
+  key: string;
   name: string;
   color: string;
 }
 
 interface Props {
-  data: MetricPoint[];
+  /** Any bucketed points carrying a numeric `ts` plus the series keys. */
+  data: { ts: number }[];
   series: Series[];
-  unit?: "percent" | "bytes" | "rate" | "number";
+  unit?: "percent" | "bytes" | "rate" | "number" | "count";
   domainMax?: number | "auto" | "dataMax";
   wide?: boolean;
 }
@@ -34,6 +34,8 @@ function formatValue(v: number | null | undefined, unit?: Props["unit"]): string
       return `${(v / 1024 / 1024).toFixed(2)} MB/s`;
     case "bytes":
       return `${(v / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    case "count":
+      return `${Math.round(v).toLocaleString()}`;
     default:
       return v.toFixed(2);
   }
@@ -97,7 +99,11 @@ export function MetricChart({ data, series, unit, domainMax = "auto", wide }: Pr
               ? `${v}%`
               : unit === "rate" || unit === "bytes"
                 ? fmtBytes(v, 0)
-                : `${v}`
+                : unit === "count"
+                  ? v >= 1000
+                    ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
+                    : `${v}`
+                  : `${v}`
           }
         />
         <Tooltip content={<ChartTooltip unit={unit} />} />
